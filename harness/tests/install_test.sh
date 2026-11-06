@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 source "$(dirname "$0")/lib.sh"
+[ -f "$ROOT/install.sh" ] || { echo "install_test.sh: skipped (installer not present — installed kit, not the source repo)"; exit 0; }
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/home" "$T/proj/.claude"
 echo '{"permissions":{"allow":["Bash(ls:*)"]},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo keep"}]}]}}' > "$T/proj/.claude/settings.json"
