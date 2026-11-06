@@ -5,8 +5,9 @@
   "required": ["task_id", "events"],
   "properties": {
     "task_id": {"type": "string"},
+    "started_at": {"type": "string", "format": "date-time"},
     "tokens": {"type": "null"},
     "cost_usd": {"type": "null"},
-    "events": {"type": "array", "items": {"type": "object", "required": ["ts", "field", "value"], "properties": {"ts": {"type": "string"}, "stage": {"type": "string"}, "field": {"enum": ["stage_start", "stage_end", "iteration", "rework_cycle", "scope_violation", "blocker", "test_pass", "test_fail", "escalation", "audit_verdict"]}, "value": {}}}}
+    "events": {"type": "array", "items": {"type": "object", "required": ["ts", "field", "value"], "properties": {"ts": {"type": "string"}, "stage": {"type": "string"}, "field": {"enum": ["stage_start", "stage_end", "iteration", "rework_cycle", "scope_violation", "blocker", "test_pass", "test_fail", "escalation", "audit_verdict", "owner_wait_start", "owner_wait_end"]}, "value": {}}}}
   }
 }

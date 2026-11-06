@@ -15,7 +15,7 @@ fi
 dir="executions/$id"; mkdir -p "$dir"
 [ -e .orcs ] || ln -s "$kit" .orcs
 [ -f "$dir/budgets.json" ] || jq -n '{limits:{analyst_iterations:2, architect_iterations:2, fix_cycles:3, tester_cycles:2, workflow_retries:3, unapproved_dependencies:0, concurrent_developers:3}, counts:{}}' > "$dir/budgets.json"
-[ -f "$dir/execution-trace.json" ] || jq -n --arg id "$id" '{task_id:$id, tokens:null, cost_usd:null, events:[]}' > "$dir/execution-trace.json"
+[ -f "$dir/execution-trace.json" ] || jq -n --arg id "$id" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{task_id:$id, started_at:$ts, tokens:null, cost_usd:null, events:[]}' > "$dir/execution-trace.json"
 touch "$dir/done.txt"
 echo "$id" > executions/ACTIVE
 echo "OK: run $id started at $dir (kit: $kit)"

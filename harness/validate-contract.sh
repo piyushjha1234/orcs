@@ -62,7 +62,7 @@ case "$kind" in
     else empty end)' ;;
   execution-trace) PROG='
     req(["task_id","events"]),
-    (if has("events") then (.events[] | (.field) as $f | if any(["stage_start","stage_end","iteration","rework_cycle","scope_violation","blocker","test_pass","test_fail","escalation","audit_verdict"][]; . == $f) then empty else "invalid event field: \($f)" end) else empty end)' ;;
+    (if has("events") then (.events[] | (.field) as $f | if any(["stage_start","stage_end","iteration","rework_cycle","scope_violation","blocker","test_pass","test_fail","escalation","audit_verdict","owner_wait_start","owner_wait_end"][]; . == $f) then empty else "invalid event field: \($f)" end) else empty end)' ;;
   *) die "unknown kind: $kind (requirement|architecture|microtask|implementation|test-report|execution-trace)" ;;
 esac
 

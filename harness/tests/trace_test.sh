@@ -16,4 +16,7 @@ assert_pass "token fields stay null"        jq -e '.tokens == null and .cost_usd
 assert_pass "trace still a valid contract"  bash "$H/validate-contract.sh" execution-trace "$F"
 assert_fail "unknown field refused"         "invalid event field" t ORCS-001 vibes 1
 assert_fail "unknown run refused"           "no trace" t ORCS-404 iteration 1
+assert_pass "owner_wait_start accepted"     t ORCS-001 owner_wait_start '"review requirement"' orchestrator
+assert_pass "owner_wait_end accepted"       t ORCS-001 owner_wait_end null orchestrator
+assert_pass "trace with waits validates"    bash "$H/validate-contract.sh" execution-trace "$F"
 finish
