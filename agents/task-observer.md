@@ -18,7 +18,7 @@ cross-session observation log and its Session Start Protocol).
 ## Work
 1. **Measure** from the trace and contracts: per stage — iterations, rework cycles, scope
    violations (gate + auditor), blockers, test pass/fail, BR-ID coverage, budget breaches.
-   Token and cost fields are null in this phase; do not estimate them.
+   Tokens are measured by `tokens.sh` from Claude Code's transcripts; never estimate them.
 2. **Find root causes.** Attribute each failure to the stage that caused it, not the one
    that suffered it — e.g. developers reworked three times because the architect's
    micro-task omitted a field mapping → fix the architect's instructions, not the developer

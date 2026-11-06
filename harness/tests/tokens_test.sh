@@ -23,4 +23,11 @@ assert_fail "bad timestamp refused"          "ISO" env ORCS_TRANSCRIPTS_ROOT="$X
 OUT2=$(run 2>&1)
 assert_pass "line after a broken line counted" jq -e '.input == 18' <<<"$OUT2"
 assert_pass "broken lines reported"            jq -e '.skipped_lines == 1' <<<"$OUT2"
+printf '%s' "$(u msg_F 2026-11-07T10:55:00.000Z 0 0 0 0)" > "$TR/sess-3.jsonl"     # no trailing newline
+u msg_G 2026-11-07T10:56:00.000Z 100 0 0 0 > "$TR/sess-4.jsonl"
+OUT3=$(run 2>&1)
+assert_pass "file without trailing newline does not swallow next file" jq -e '.input == 118' <<<"$OUT3"
+echo '{"type":"assistant","timestamp":"2026-11-07T10:57:00+00:00","message":{"id":"msg_H","usage":{"input_tokens":5}}}' > "$TR/sess-5.jsonl"
+OUT4=$(run 2>&1)
+assert_pass "unparseable timestamp counted as skipped" jq -e '.skipped_lines == 2 and .input == 118' <<<"$OUT4"
 finish

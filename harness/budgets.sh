@@ -17,6 +17,7 @@ fi
 count=$(jq -r --arg c "$counter" '.counts[$c] // 0' "$file")
 if [ "$count" -gt "$limit" ]; then
   echo "orcs-harness: BUDGET EXCEEDED: $counter = $count (limit $limit). Stop, keep state, report the gap to the owner." >&2
+  [ "$check" -eq 0 ] && trace_event "$(dirname "$file")/execution-trace.json" budget_breach "$counter=$count>$limit" budgets
   exit 1
 fi
 echo "OK: $counter $count/$limit"

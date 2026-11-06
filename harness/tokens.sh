@@ -12,6 +12,7 @@
 # Note: every session in the same project directory during the window is counted.
 HD="$(cd "$(dirname "$0")" && pwd)"
 source "$HD/lib/common.sh"
+set -o pipefail
 [ $# -eq 3 ] || die "usage: tokens.sh <project-dir> <start-iso> <end-iso>"
 proj="$1"; start="$2"; end="$3"
 for t in "$start" "$end"; do [[ "$t" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]] || die "timestamps must be ISO-8601 UTC (e.g. 2026-11-07T10:00:00Z), got: $t"; done
@@ -21,9 +22,10 @@ dir="${ORCS_TRANSCRIPTS_ROOT:-$HOME/.claude/projects}/$slug"
 files=()
 for f in "$dir"/*.jsonl "$dir"/*/subagents/*.jsonl; do [ -f "$f" ] && files+=("$f"); done
 [ ${#files[@]} -gt 0 ] || die "no transcripts for $proj under $dir — cannot measure tokens"
-cat "${files[@]}" | jq -cR '(fromjson? // {skip: true})
+awk 1 "${files[@]}" | jq -cR '(fromjson? // {skip: true})
     | if .skip == true then {skip: true}
-      elif (.message.usage? and .timestamp? and .message.id?) then {id: .message.id, ts: (.timestamp | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601), u: .message.usage}
+      elif (.message.usage? and .timestamp? and .message.id?) then
+        (try {id: .message.id, ts: (.timestamp | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601), u: .message.usage} catch {skip: true})
       else empty end' \
   | jq -s --arg s "$start" --arg e "$end" --argjson w "$CACHE_READ_WEIGHT" '
       ($s | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) as $a | ($e | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) as $b |

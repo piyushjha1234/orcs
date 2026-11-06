@@ -87,8 +87,9 @@ orchestrator parses it mechanically.
    writes comments in `### User Feedback` and `APPROVED: …` in `### Owner Approval`.
    The owner also writes `SATISFACTION: n/10`. Re-dispatch the observer to apply only the
    approved changes (staged with `upskill-apply.sh`) and record the final score with
-   `.orcs/harness/score.sh executions/<id>`. Report the score, the previous score, and the
-   best to the owner. The project is not done until the upskill gate closes (or
+   `.orcs/harness/score.sh executions/<id>` (exit 3 = pending: no valid owner rating under
+   `### User Feedback` yet — nothing recorded). Report the score, the previous score, the
+   best, and any WARNING lines to the owner. The project is not done until the upskill gate closes (or
    `APPROVED: none`) and the score is final.
 9. **Clean up**: `git worktree remove` each `.orcs-wt/*`; delete `executions/ACTIVE`.
 

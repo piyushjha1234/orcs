@@ -43,3 +43,10 @@ scores_file() {
   if [ -f "$kit/SOURCE_REPO" ]; then repo=$(cat "$kit/SOURCE_REPO"); else repo="$kit"; fi
   echo "$repo/scores/history.jsonl"
 }
+# trace_event <execution-trace.json> <field> <value-string> <stage> — append if the trace exists.
+trace_event() {
+  [ -f "$1" ] || return 0
+  local tmp; tmp=$(mktemp)
+  jq --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg f "$2" --arg v "$3" --arg st "$4" \
+    '.events += [{ts:$ts, stage:$st, field:$f, value:$v}]' "$1" > "$tmp" && mv "$tmp" "$1"
+}

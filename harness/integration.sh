@@ -41,8 +41,13 @@ record() { # record <status> <reason>
                        elif ([$a[0].microtasks[].task_id] - .merged | length) == 0 then "PASS"
                        else "PENDING" end)' "$ijson" > "$tmp" && mv "$tmp" "$ijson"
 }
-reject()   { record FAIL "$1"; echo "REDISPATCH $dev: $1 (evidence: $log)" >&2; exit 1; }
-escalate() { record FAIL "escalate: $1"; echo "ESCALATE $dev: $1 — re-run the architect for a full decomposition" >&2; exit 1; }
+tracef="$td/execution-trace.json"
+reject()   { record FAIL "$1"
+             case "$1" in "scope gate"*|"scope audit"*) trace_event "$tracef" scope_violation "$dev: $1" integration ;;
+                          *) trace_event "$tracef" rework_cycle "$dev: $1" integration ;; esac
+             echo "REDISPATCH $dev: $1 (evidence: $log)" >&2; exit 1; }
+escalate() { record FAIL "escalate: $1"; trace_event "$tracef" escalation "$dev: $1" integration
+             echo "ESCALATE $dev: $1 — re-run the architect for a full decomposition" >&2; exit 1; }
 
 mt=$(mktemp); wt=""
 cleanup() { [ -n "$wt" ] && { git worktree remove --force "$wt" >/dev/null 2>&1; rm -rf "$wt"; }; rm -f "$mt" "$mt.changed" "$mt.err"; }

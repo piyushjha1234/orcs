@@ -25,21 +25,31 @@ load_scoring_conf "$conf"
 for k in requirement architecture test-report; do msg=$(verify_approved "$td" "$k") || die "$msg"; done
 trace="$td/execution-trace.json"; require_json_file "$trace"
 ijson="$td/integration.json"; require_json_file "$ijson"
-budgets="$td/budgets.json"; [ -f "$budgets" ] || echo '{"limits":{},"counts":{}}' > "$budgets"
+budgets="$td/budgets.json"; require_json_file "$budgets"   # created by init-run.sh; never recreated here
 task=$(jq -r .task_id "$td/requirement.approved.json")
 hist=$(scores_file)
 
 start=$(jq -r '.started_at // empty' "$trace"); [ -n "$start" ] || die "trace has no started_at (run init-run.sh) — cannot time the run"
 end=$(awk -F'\t' '$2=="test-report" {t=$1} END {print t}' "$td/approvals.log")
 [ -n "$end" ] || die "no test-report approval in $td/approvals.log — delivery not complete"
+first=$(awk -F'\t' 'NR==1 {print $1}' "$td/approvals.log")
+[[ "$start" < "$end" || "$start" == "$end" ]] || die "trace started_at ($start) is after delivery ($end) — run timing is inconsistent"
+[[ "$start" < "$first" || "$start" == "$first" ]] || die "trace started_at ($start) is after the first approval ($first) — run timing is inconsistent"
 tokens=$(bash "$HD/tokens.sh" "$proj" "$start" "$end") || exit 1
+[ "$(jq -r .messages <<<"$tokens")" -gt 0 ] || die "no assistant messages in the transcripts for $proj between $start and $end — tokens cannot be measured (sessions launched from another path?)"
+overrides=$(jq -n '$ENV | {ORCS_TRANSCRIPTS_ROOT, ORCS_REPORT, ORCS_SCORING_CONF, ORCS_SCORES_FILE}')
 
 # Satisfaction: last 'SATISFACTION: n/10' (n = 0..10) in this run's '## Project <id>' section,
 # HTML comments ignored. Anything else → pending.
 report="${ORCS_REPORT:-$proj/docs/07-observer-report.md}"
 sat=""
 if [ -r "$report" ]; then
-  sat=$(awk -v id="$task" '/^## Project /{insec = (index($0, "## Project " id) == 1)} insec' "$report" \
+  # exact run header ("## Project <id>" alone or followed by a space), then only its
+  # "### User Feedback" subsection — a rating written anywhere else is not the owner's
+  sat=$(awk -v id="$task" '
+      /^## Project / { insec = ($0 == "## Project " id || index($0, "## Project " id " ") == 1); infb = 0; next }
+      insec && /^### / { infb = ($0 ~ /^### User Feedback[[:space:]]*$/); next }
+      insec && infb' "$report" \
     | perl -0pe 's/<!--.*?-->//gs' \
     | sed -nE 's/^[[:space:]]*SATISFACTION:[[:space:]]*([0-9]|10)[[:space:]]*\/[[:space:]]*10[[:space:]]*$/\1/p' | tail -1)
 fi
@@ -47,7 +57,7 @@ fi
 result=$(jq -n \
   --slurpfile req "$td/requirement.approved.json" --slurpfile arch "$td/architecture.approved.json" \
   --slurpfile tr "$td/test-report.approved.json" --slurpfile ij "$ijson" --slurpfile trace "$trace" \
-  --slurpfile bud "$budgets" --argjson tok "$tokens" --arg sat "$sat" --arg task "$task" --arg proj "$proj" \
+  --slurpfile bud "$budgets" --argjson tok "$tokens" --argjson ovr "$overrides" --arg sat "$sat" --arg task "$task" --arg proj "$proj" \
   --arg start "$start" --arg end "$end" \
   --argjson w "{\"correctness\":$W_CORRECTNESS,\"quality\":$W_QUALITY,\"satisfaction\":$W_SATISFACTION,\"tokens\":$W_TOKENS,\"speed\":$W_SPEED,\"completion\":$W_COMPLETION}" \
   --argjson pen "{\"scope_rejections\":$P_SCOPE_REJECTION,\"rework\":$P_REWORK,\"escalations\":$P_ESCALATION,\"blockers\":$P_BLOCKER,\"budget_breaches\":$P_BUDGET_BREACH}" \
@@ -62,21 +72,29 @@ result=$(jq -n \
                            and (any($tr[0].results[]; .requirement_id == $b and .status == "FAIL") | not)) ] | length) as $passed |
   ($passed / $n) as $c |
   # process-quality penalties
+  # each penalty = the larger of two independent records (integration.json / budgets.json
+  # state and the append-only trace), so pruning one record does not erase a penalty
   ([ $ij[0].runs[]? | select(.status == "FAIL") | .reason // "" ]) as $fails |
-  { scope_rejections: ([ $fails[] | select(startswith("scope gate") or startswith("scope audit")) ] | length),
-    escalations:      ([ $fails[] | select(startswith("escalate")) ] | length),
-    rework:           ([ $fails[] | select((startswith("scope gate") or startswith("scope audit") or startswith("escalate")) | not) ] | length),
-    blockers:         ([ $trace[0].events[]? | select(.field == "blocker") ] | length),
-    budget_breaches:  ([ $bud[0].counts // {} | to_entries[] | . as $e
+  def ev($f): [ $trace[0].events[]? | select(.field == $f) ] | length;
+  { scope_rejections: ([ ([ $fails[] | select(startswith("scope gate") or startswith("scope audit")) ] | length), ev("scope_violation") ] | max),
+    rework:           ([ ([ $fails[] | select((startswith("scope gate") or startswith("scope audit") or startswith("escalate")) | not) ] | length), ev("rework_cycle") ] | max),
+    escalations:      ([ ([ $fails[] | select(startswith("escalate")) ] | length), ev("escalation") ] | max),
+    blockers:         ev("blocker"),
+    budget_breaches:  ([ ([ $bud[0].counts // {} | to_entries[] | . as $e
                          | (($bud[0].limits[$e.key]) // ($bud[0].limits[$e.key | sub("_DEV-[0-9]+$"; "")])) as $lim
-                         | select($lim != null and $e.value > $lim) ] | length) } as $pc |
+                         | select($lim != null and $e.value > $lim) ] | length), ev("budget_breach") ] | max) } as $pc |
   ([ $pc | to_entries[] | .value * $pen[.key] ] | add) as $deduct |
   ([1 - $deduct, 0] | max) as $q |
-  # owner waits: pair start/end events in time order; unmatched count as harness time
+  # owner waits: pair start/end events in time order, clip each pair to the run window
+  # (waits after delivery do not count); unmatched starts count as harness time
+  ($start | t) as $ws | ($end | t) as $we |
   ([ $trace[0].events[]? | select(.field == "owner_wait_start" or .field == "owner_wait_end") ] | sort_by(.ts | t)
    | reduce .[] as $e ({open: null, total: 0};
        if $e.field == "owner_wait_start" then (if .open == null then .open = ($e.ts | t) else . end)
-       elif .open != null then .total += (($e.ts | t) - .open) | .open = null else . end) | .total) as $wait |
+       elif .open != null then
+         ([([.open, $ws] | max), ([($e.ts | t), $we] | min)]) as $iv |
+         .total += ([($iv[1] - $iv[0]), 0] | max) | .open = null
+       else . end) | .total) as $wait |
   ((($end | t) - ($start | t) - $wait) / 60) as $hmin |
   ([$hmin, 0] | max) as $hmin |
   ($tok.effective / $n) as $tpb | ($hmin / $n) as $mpb |
@@ -96,7 +114,7 @@ result=$(jq -n \
     capped: ($raw != null and $c < 1 and $raw > $cap),
     factors: $f,
     points: (if $s == null then null else ($f | with_entries(.value = ((.value * $w[.key]) | r1))) end),
-    inputs: { br_count: $n, br_passed: $passed, penalties: $pc, tokens: $tok,
+    inputs: { br_count: $n, br_passed: $passed, penalties: $pc, tokens: $tok, overrides: $ovr,
               tokens_per_br: ($tpb | floor), run_start: $start, run_end: $end,
               owner_wait_minutes: ($wait / 60 | r1), harness_minutes: ($hmin | r1),
               microtasks_planned: ($planned | length), microtasks_merged: $merged_ok },
@@ -104,8 +122,8 @@ result=$(jq -n \
 
 if [ "$(jq -r .status <<<"$result")" = "pending" ]; then
   jq . <<<"$result" > "$td/score.json"
-  echo "PENDING: no valid 'SATISFACTION: n/10' (n = 0..10) in the '## Project $task' section of $report — score not recorded." >&2
-  exit 0
+  echo "PENDING: no valid 'SATISFACTION: n/10' (n = 0..10) under '### User Feedback' in the '## Project $task' section of $report — score NOT recorded." >&2
+  exit 3
 fi
 
 mkdir -p "$(dirname "$hist")"; touch "$hist"
@@ -113,8 +131,10 @@ already=$(jq -c --arg t "$task" --arg p "$proj" 'select(.task_id == $t and .proj
 if [ "$rescore" -eq 0 ] && [ -n "$already" ]; then
   die "$task in $proj is already scored in $hist — use --rescore to append a superseding record"
 fi
-prev=$(jq -s 'map(select(.status == "final")) | (if length > 0 then .[-1].score else null end)' "$hist")
-best=$(jq -s 'map(select(.status == "final")) | (map(.score) | max)' "$hist")
+# previous / best: latest record per (task, project), excluding this run
+others='map(select(.status == "final")) | to_entries | group_by([.value.task_id, .value.project]) | map(.[-1]) | sort_by(.key) | map(.value) | map(select((.task_id == $t and .project == $p) | not))'
+prev=$(jq -s --arg t "$task" --arg p "$proj" "$others | (if length > 0 then .[-1].score else null end)" "$hist")
+best=$(jq -s --arg t "$task" --arg p "$proj" "$others | (map(.score) | max)" "$hist")
 final=$(jq -c --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson rs "$rescore" '. + {scored_at: $ts, rescore: ($rs == 1)}' <<<"$result")
 jq . <<<"$final" > "$td/score.json"
 echo "$final" >> "$hist"
@@ -123,5 +143,7 @@ jq -r --argjson prev "$prev" --argjson best "$best" '
   "ORCS SCORE \(.task_id): \(.score)/100" + (if .capped then "  (capped: \(.inputs.br_count - .inputs.br_passed) approved BR-ID(s) not passing; raw \(.raw_score))" else "" end),
   "  previous: \($prev // "none")   best before: \($best // "none")",
   (.points | to_entries[] | "  \(.key): \(.value) / \($ARGS.named.w[.key] // "")"),
+  (if .inputs.tokens.skipped_lines > 0 then "  WARNING: \(.inputs.tokens.skipped_lines) unreadable transcript line(s) skipped — tokens may be undercounted" else empty end),
+  (if ([.inputs.overrides[] | select(. != null)] | length) > 0 then "  WARNING: non-standard inputs used: \(.inputs.overrides | with_entries(select(.value != null)) | tostring)" else empty end),
   "  tokens/BR \(.inputs.tokens_per_br) (ref \(.refs.tokens_per_br)) · harness min \(.inputs.harness_minutes) (+\(.inputs.owner_wait_minutes) waiting on owner) · penalties \(.inputs.penalties | tostring)"
 ' --argjson w "$(jq -c .weights <<<"$final")" <<<"$final"
