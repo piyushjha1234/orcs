@@ -1,0 +1,34 @@
+{
+  "task_id": "ORCS-001",
+  "results": [
+    {
+      "requirement_id": "BR-1",
+      "status": "PASS",
+      "evidence": "TC-1,TC-2 executed"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "TC-1",
+      "requirement_id": "BR-1",
+      "type": "boundary",
+      "steps": "last purchase exactly 90 days ago",
+      "expected": "not flagged"
+    },
+    {
+      "id": "TC-2",
+      "requirement_id": "BR-1",
+      "type": "positive",
+      "steps": "last purchase 91 days ago",
+      "expected": "flagged"
+    }
+  ],
+  "traceability": {
+    "BR-1": [
+      "TC-1",
+      "TC-2"
+    ]
+  },
+  "flaws": [],
+  "overall_status": "MAYBE"
+}

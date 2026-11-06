@@ -1,0 +1,28 @@
+{
+  "task_id": "ORCS-001",
+  "objective": "Flag inactive customers",
+  "requirements": [
+    {
+      "id": "BR-1",
+      "description": "Identify customers with no purchase in 90 days",
+      "priority": "must",
+      "acceptance_criteria": [
+        "Customer last purchase date older than 90 days is flagged"
+      ]
+    },
+    {
+      "id": "BR-2",
+      "description": "Export flagged list as CSV",
+      "priority": "should",
+      "acceptance_criteria": [
+        "CSV contains customer_id column"
+      ]
+    }
+  ],
+  "assumptions": [],
+  "open_questions": [],
+  "out_of_scope": [
+    "Dashboard"
+  ],
+  "complexity": "tiny"
+}

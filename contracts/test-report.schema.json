@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Orcs Test Report Contract",
+  "type": "object",
+  "required": ["task_id", "results", "scenarios", "traceability", "flaws", "overall_status"],
+  "properties": {
+    "task_id": {"type": "string"},
+    "results": {"type": "array", "items": {"type": "object", "required": ["requirement_id", "status", "evidence"], "properties": {"requirement_id": {"type": "string", "pattern": "^BR-[0-9]+$"}, "status": {"enum": ["PASS", "FAIL"]}, "evidence": {"type": "string", "minLength": 1}}}},
+    "scenarios": {"type": "array", "items": {"type": "object", "required": ["id", "requirement_id", "type", "steps", "expected"], "properties": {"id": {"type": "string", "pattern": "^TC-[0-9]+$"}, "requirement_id": {"type": "string", "pattern": "^BR-[0-9]+$"}, "type": {"enum": ["positive", "negative", "boundary", "edge"]}, "steps": {"type": "string"}, "expected": {"type": "string"}}}},
+    "traceability": {"type": "object", "additionalProperties": {"type": "array", "minItems": 1, "items": {"type": "string"}}},
+    "flaws": {"type": "array", "items": {"type": "object", "required": ["requirement_id", "description"]}},
+    "overall_status": {"enum": ["PASS", "FAIL"]}
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Orcs Execution Trace (deterministic fields only; token/cost deferred to Phase 4)",
+  "type": "object",
+  "required": ["task_id", "events"],
+  "properties": {
+    "task_id": {"type": "string"},
+    "tokens": {"type": "null"},
+    "cost_usd": {"type": "null"},
+    "events": {"type": "array", "items": {"type": "object", "required": ["ts", "field", "value"], "properties": {"ts": {"type": "string"}, "stage": {"type": "string"}, "field": {"enum": ["stage_start", "stage_end", "iteration", "rework_cycle", "scope_violation", "blocker", "test_pass", "test_fail", "escalation", "audit_verdict"]}, "value": {}}}}
+  }
+}
