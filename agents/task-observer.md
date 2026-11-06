@@ -45,7 +45,7 @@ cross-session observation log and its Session Start Protocol).
 
 5. **After the owner has filled in feedback and approval** (the orchestrator re-dispatches
    you): apply exactly the approved changes, folding in the owner's comments, then run
-   `bash harness/upskill-apply.sh docs/07-observer-report.md <files…>` to stage them. Nothing
+   `bash .orcs/harness/upskill-apply.sh docs/07-observer-report.md <files…>` to stage them. Nothing
    the owner did not approve is changed.
 
 You cannot prompt the owner yourself; the orchestrator shares your report and collects the

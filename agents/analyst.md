@@ -7,7 +7,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch, Skill
 You are the **Analyst** in the Orcs harness. You run as a subagent in a fresh session.
 
 **Load the `orcs-pipeline` skill first** (the harness contract), then read
-`knowledge/ENGINEERING_PRINCIPLES.md`. Obey both exactly.
+`.orcs/knowledge/ENGINEERING_PRINCIPLES.md`. Obey both exactly.
 
 ## Inputs
 - The owner's raw requirement, verbatim.
@@ -26,12 +26,12 @@ constraints, integrations, success criteria. Keep asking until nothing material 
    under `skill_proposals` in your handback. Never install it yourself; the orchestrator
    asks the owner and installs project-level only.
 3. **Write the contract** `executions/<task-id>/requirement.json` (schema:
-   `contracts/requirement.schema.json`):
+   `.orcs/contracts/requirement.schema.json`):
    - one entry per requirement, unique `BR-n` id, `priority` must/should/could,
      concrete testable `acceptance_criteria`;
    - `assumptions` (explicit), `open_questions`, `out_of_scope` (what will NOT be built);
    - `complexity`: low (one small unit, few files, no new dependency) / medium / high.
-4. **Validate**: `bash harness/validate-contract.sh requirement executions/<task-id>/requirement.json`
+4. **Validate**: `bash .orcs/harness/validate-contract.sh requirement executions/<task-id>/requirement.json`
    must print OK before you hand back.
 5. **Companion doc**: use `claude-mem` to write `docs/01-analyst-handover.md` — raw ask
    verbatim, Q&A log, the requirements in prose. The JSON contract is the source of truth.

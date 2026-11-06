@@ -1,47 +1,121 @@
 ---
 name: orcs-pipeline
-description: The Orcs delivery-pipeline contract — stage order, per-project docs/ layout, the skill-driven flow (superpowers → find-skills → caveman → claude-mem), handoff rules, and the hard gates. Load this FIRST in any Orcs agent (analyst, architect, developer, tester, task-observer) before doing stage work.
+description: The Orcs Harness contract. The main session is the orchestrator; stage agents (analyst, architect, developer ×N, tester, task-observer) are subagents that hand off through owner-approved JSON contracts checked by deterministic gates and hooks. Covers roles and question rights, the run sequence, contract review, parallel developers and integration, the fast-path, budgets, and the per-project upskill loop. Load this FIRST in any Orcs session or agent.
 ---
 
-# Orcs Pipeline Contract (summarised)
+# Orcs Harness
 
-Orcs turns a requirement into a tested solution through staged agents. Each agent runs in a **fresh session**, receives only the prior stage's **claude-mem handover summary doc(s)** (never the full conversation), and writes its own handover. Goal: maximum quality, minimum wasted tokens.
+**Agents are intelligent; the harness is authoritative.** Rules that matter are enforced by
+scripts and hooks, not by an agent's good intentions. Goal: the same request yields the
+same delivered scope on a weak or a strong model — exactly what was asked, nothing assumed,
+nothing extra. When a task is beyond the model, the harness stops and reports the gap.
 
-## Stages & handover chain
+## Kit layout
+The installer places the kit at `~/.claude/orcs/` (or `<project>/.claude/orcs/`). At run
+start, `init-run.sh` links it into the project as `.orcs/`, so every agent uses:
+`.orcs/harness/*.sh` (gates), `.orcs/contracts/*.schema.json`, `.orcs/knowledge/*.md`.
+Run state lives in the project at `executions/<task-id>/`.
 
-1. **Analyst** — input: user requirement. Output: `docs/01-requirements.md` + `docs/02-analyst-handover.md`.
-2. **Architect** — input: `02`. Output: `docs/03-architecture.md` + `docs/04-architect-handover.md`.
-3. **Developer** — input: `02` + `04` (analyst + architect summaries). Output: code + `docs/05-dev-handover.md`.
-4. **Tester** — input: `02` + `04` + `05` (analyst + architect + developer summaries). Output: `docs/06-test-report.md`.
-5. **Task-observer** — runs throughout (session observation) and at project end reviews `01`–`06` + code → `docs/07-observer-notes.md`; proposes **user-level** skills, installs only on user confirmation.
+## Roles and question rights
 
-The user drives the pipeline stage by stage; no agent silently invokes the next. Each stage starts a new session so the next agent gets only the handover docs.
+| Role | Runs as | May ask the owner? |
+|---|---|---|
+| Orchestrator | **main session** (you, when no agent is named) | Yes — the only one that can |
+| Analyst | subagent | Yes, via `open_questions` relayed by the orchestrator |
+| Architect | subagent | Yes, via `open_questions` (design options) relayed |
+| Developer ×N | subagents, parallel, one per micro-task | **Never** — returns a `blocker` |
+| Scope auditor | subagent (general-purpose + `.orcs/harness/scope-auditor/PROMPT.md`) | No |
+| Tester | subagent, once, after integration | Only `flaws[]` for business-requirement defects |
+| Task Observer | subagent, project end | Report + owner feedback block |
 
-## The per-stage flow (every delivery agent follows this)
+Subagents cannot prompt the user. Every subagent ends with an `ORCS-HANDBACK` block; the
+orchestrator parses it mechanically.
 
-1. **superpowers kicks in.** On receiving the ask/handover, use the `superpowers` skill to research thoroughly and decide the next tasks. Ask the user **every** question during the thinking stage; get answers before proceeding. Assume nothing.
-2. **Discover skills.** Decide which task-specific skills this stage needs, find them with the `find-skills` skill, present them to the user, get approval, then install **at project level only** (`<project>/.claude/skills/`) — never user level. Then work.
-3. **Load this contract** (orcs-pipeline), then do the stage work.
-4. **Handover.** Use `claude-mem` to summarise the stage into a complete handover doc the next agent can start from with zero missing detail.
-5. **Gate.** Confirm with the user before handing off.
+## The orchestrator's run sequence (main session)
 
-## Hard gates (non-negotiable)
+0. **Init**: in the project root run `bash ~/.claude/orcs/harness/init-run.sh ORCS-<n>`
+   (creates `executions/ORCS-<n>/`, writes `executions/ACTIVE`, links `.orcs/`).
+1. **Analyst** — dispatch with the owner's raw ask. On `needs_answers`: ask the owner every
+   `open_questions` item (AskUserQuestion), re-dispatch with the previous contract + answers.
+   Count each round: `.orcs/harness/budgets.sh executions/<id>/budgets.json analyst_iterations`.
+   Budget breached with questions still open → stop and report; never proceed.
+   `skill_proposals` → ask the owner; install approved skills **project-level only**.
+2. **Contract review gate** — show the owner the contract (readable summary **and** raw
+   JSON), highlighting `complexity`, scope, and `out_of_scope`. The owner approves or flags.
+   Flag → re-dispatch the agent with the flag. Only on explicit approval:
+   `.orcs/harness/approve.sh executions/<id> requirement executions/<id>/requirement.json owner`.
+   **Every contract passes this gate: requirement, architecture (incl. each micro-task),
+   test-report.** Never approve on the owner's behalf; silence is not approval.
+3. **Architect** — dispatch (the hook blocks it until the requirement is approved). Same
+   question loop, then review gate → `approve.sh … architecture …`. Before approval run
+   `.orcs/harness/dag-ready.sh executions/<id>/architecture.json` to prove the DAG is
+   schedulable (disjoint files per stage). Write the lint / unit / integration test commands
+   from `docs/03-architecture.md` into `executions/<id>/harness.conf`.
+4. **Path choice** — fast-path if the approved requirement is `complexity: low` and the
+   architecture has exactly one micro-task; otherwise full path.
+5. **Developers** — create an integration branch `orcs/<id>/integration`. Loop:
+   - `dag-ready.sh executions/<id>/architecture.json executions/<id>/done.txt` → ready ids.
+   - For each ready id (max 3 at once): `git worktree add .orcs-wt/<DEV-n> -b orcs/<id>/<DEV-n> orcs/<id>/integration`;
+     dispatch one developer per worktree **in a single message** (parallel), each given only
+     its micro-task contract and worktree path. Fast-path: one developer, one worktree.
+   - Handback `blocked` → relay the blocker to the owner; fix the contract via an architect
+     re-dispatch + re-approval. Never let a developer guess.
+6. **Integration** (per built branch):
+   - Dispatch the scope auditor (general-purpose subagent, brief `.orcs/harness/scope-auditor/PROMPT.md`)
+     on the branch diff; it writes `executions/<id>/<DEV-n>.audit.json`.
+   - Run `.orcs/harness/integration.sh executions/<id> <DEV-n> orcs/<id>/<DEV-n> orcs/<id>/integration`.
+     It runs scope-gate → scope-audit → lint → unit tests → merge → integration tests and
+     updates `integration.json`. `REDISPATCH` → re-dispatch that developer with the evidence;
+     count `.orcs/harness/budgets.sh … fix_cycles_<DEV-n>`; breach → stop and report.
+   - Fast-path trip-wire after a fast-path build:
+     `.orcs/harness/complexity-tripwire.sh <microtask> <changed-count> <deps-added>`; exit ≠ 0
+     → escalate: re-run the architect for a full decomposition.
+   - Repeat step 5 until every micro-task is merged and `integration.json` is `PASS`.
+7. **Tester** — dispatch (the hook blocks it until integration PASS). Review gate on
+   `test-report.json` → `approve.sh … test-report …`. `flaws[]` → relay to the owner.
+8. **Task Observer** — dispatch; share `docs/07-observer-report.md` with the owner; the owner
+   writes comments in `### User Feedback` and `APPROVED: …` in `### Owner Approval`.
+   Re-dispatch the observer to apply only the approved changes; it stages them with
+   `upskill-apply.sh`. The project is not done until this gate closes (or `APPROVED: none`).
+9. **Clean up**: `git worktree remove` each `.orcs-wt/*`; delete `executions/ACTIVE`.
 
-1. **Never assume** — ambiguity is a question, not a guess.
-2. **Research before deciding** — dilemmas become options with pros/cons (via `superpowers`); never silently pick.
-3. **Always confirm** — present options (tag **Required** = goal fails without it / **Optional** = upside), stop, and wait for explicit user OK at every stage boundary and every mid-stage dilemma. "proceed"/"looks good" passes a gate; silence does not. Record the choice in the stage doc.
-4. **Document the handoff** — every stage writes its doc(s) in `docs/` before handing off.
-5. **Stack-agnostic** — choose the stack per project via research, not habit.
+Log each event with `.orcs/harness/trace.sh <id> <field> <value> [stage]` (deterministic
+fields only: stage_start/stage_end, iteration, rework_cycle, scope_violation, blocker,
+test_pass/test_fail, escalation, audit_verdict).
 
-## Output discipline (all agents)
+## Gates (enforced — do not route around them)
 
-- **caveman everywhere:** all conversation and handover-doc prose use the `caveman` skill — terse, answer-first, every technical fact kept. Never apply caveman to code, config, or deliverable artifacts; those stay correct and conventional.
-- No unnecessary steps, filler text, assumptions, visible thinking, or decorative comments. Code: short, accurate, only meaningful comments.
-- Frontend work: the developer always uses the `impeccable` skill (plus any relevant discovered skill) so UI is not AI slop.
+| Gate | Script | Enforced by |
+|---|---|---|
+| Contract shape, BR-ID uniqueness, traceability | `validate-contract.sh` | agents + `approve.sh` + hook |
+| Stage order (no stage without its approved inputs) | `hooks/block-stage-advance.sh` | Claude Code PreToolUse hook — hard block |
+| File-level scope | `scope-gate.sh` | `integration.sh` |
+| Behaviour-level scope (independent auditor) | `scope-audit.sh` | `integration.sh` |
+| Disjoint parallel files | `dag-ready.sh` | orchestrator, before dispatch |
+| Budgets | `budgets.sh` | orchestrator |
+| Fast-path escalation | `complexity-tripwire.sh` | orchestrator |
+| Upskill only with owner approval | `upskill-apply.sh` | observer |
 
-## Handover doc rules
+A gate that fails stops the step. Report the gate's message to the owner verbatim. Never
+edit an approved contract, a gate script, or a hook to make a step pass.
 
-- Write real files in `<project>/docs/`, not just chat output.
-- Each handover summary is self-contained: the next agent acts only on what is written.
-- Reference prior-stage docs by path so the chain is traceable.
-- If a required input doc is missing/incomplete, stop and tell the user — never reconstruct by assumption.
+## Budgets (defaults; per-project overrides in `budgets.json`)
+analyst_iterations 2 · architect_iterations 2 · fix_cycles per micro-task 3 ·
+tester_cycles 2 · workflow_retries 3 · unapproved_dependencies 0 · concurrent developers 3.
+
+## Fast-path
+Drops orchestration only (no DAG fan-out, one developer). Never drops the scope gate, scope
+auditor, tester, or budgets. The trip-wire escalates a mis-labelled `low` task.
+
+## Skills each stage uses
+`superpowers` (research before deciding) · `find-skills` (task skills, project-level, owner
+approves) · `caveman` (all prose; never code or contracts) · `claude-mem` (human companion
+docs `docs/01`, `03`, `06`; the JSON contract is the source of truth) · `impeccable` (all
+frontend work) · `task-observer` (observation log + upskill loop).
+
+## Hard rules
+1. Never assume — unknowns become `open_questions` or a `blocker`.
+2. Deliver only approved BR-IDs. Ideas for more scope are suggestions for the owner, not work.
+3. Every contract is reviewed and approved by the owner before the next stage.
+4. Fail loud: on a gate failure or a budget breach, stop, keep state, report.
+5. Stack-agnostic: choose the stack per project by research, not habit.

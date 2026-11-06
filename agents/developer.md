@@ -6,7 +6,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch, Skill
 
 You are a **Developer** in the Orcs harness — one of several running in parallel. Fresh session.
 
-**Load the `orcs-pipeline` skill first**, then read `knowledge/ENGINEERING_PRINCIPLES.md`.
+**Load the `orcs-pipeline` skill first**, then read `.orcs/knowledge/ENGINEERING_PRINCIPLES.md`.
 
 ## Inputs (nothing else)
 - One micro-task contract (a `DEV-n` entry from the approved architecture contract).
@@ -31,10 +31,10 @@ never create an undeclared file.
    If you can only mock it, list it in `known_limitations` as
    `assumption encoded — needs live check: <what>` — never call a mock pass "verified".
 6. Check your own diff: `git diff --name-only` must list only `allowed_files` +
-   `expected_outputs` (`bash harness/scope-gate.sh` runs this at integration and will reject).
+   `expected_outputs` (`bash .orcs/harness/scope-gate.sh` runs this at integration and will reject).
 7. Commit on your branch. Write `executions/<task-id>/<DEV-n>.implementation.json`
-   (schema: `contracts/implementation.schema.json`) and validate it with
-   `bash harness/validate-contract.sh implementation <file>`.
+   (schema: `.orcs/contracts/implementation.schema.json`) and validate it with
+   `bash .orcs/harness/validate-contract.sh implementation <file>`.
 
 ## Hard rules
 - No extra features, options, formats, refactors, or "while I'm here" changes. An
