@@ -15,4 +15,17 @@ C=$(mktemp -d); sed 's/^W_COMPLETION=5$/W_COMPLETION=4/' "$ROOT/knowledge/scorin
 assert_fail "weights must sum to 100"       "sum to 100" bash -c "source '$H/lib/common.sh'; load_scoring_conf '$C/bad.conf'"
 assert_pass "shipped conf loads"            bash -c "source '$H/lib/common.sh'; load_scoring_conf '$ROOT/knowledge/scoring.conf' && [ \"\$REF_TOKENS_PER_BR\" = 150000 ] && [ \"\$QUALITY_CAP\" = 60 ]"
 rm -rf "$C"
+Q=$(mktemp -d)
+OUT=$(cd "$Q" && ORCS_SCORES_FILE="$Q/none.jsonl" bash "$I" ORCS-100 2>&1)
+assert_pass "no history → baseline message"   grep -qi "baseline" <<<"$OUT"
+assert_pass "no history → beat null"          jq -e '.beat == null and .best == null' "$Q/executions/ORCS-100/target.json"
+R=$(mktemp -d)
+jq -cn '{status:"final",task_id:"ORCS-1",score:80,weights:{correctness:35,quality:20,satisfaction:20,tokens:10,speed:10,completion:5},factors:{correctness:1,quality:1,satisfaction:1,tokens:0.2,speed:1,completion:1}}' > "$R/h.jsonl"
+jq -cn '{status:"final",task_id:"ORCS-2",score:70,weights:{correctness:35,quality:20,satisfaction:20,tokens:10,speed:10,completion:5},factors:{correctness:1,quality:0.5,satisfaction:0.9,tokens:0.5,speed:1,completion:1}}' >> "$R/h.jsonl"
+OUT=$(cd "$R" && ORCS_SCORES_FILE="$R/h.jsonl" bash "$I" ORCS-3 2>&1)
+assert_pass "beat = latest score"             jq -e '.beat == 70' "$R/executions/ORCS-3/target.json"
+assert_pass "best = max score"                jq -e '.best == 80' "$R/executions/ORCS-3/target.json"
+assert_pass "focus = largest weighted gap"    jq -e '.focus == "quality" and .focus_gap == 10' "$R/executions/ORCS-3/target.json"
+assert_pass "target announced"                grep -q "beat 70" <<<"$OUT"
+rm -rf "$Q" "$R"
 finish

@@ -19,3 +19,15 @@ dir="executions/$id"; mkdir -p "$dir"
 touch "$dir/done.txt"
 echo "$id" > executions/ACTIVE
 echo "OK: run $id started at $dir (kit: $kit)"
+
+# Target: beat the latest final score; focus on the factor with the largest weighted gap.
+hist=$(scores_file)
+target=$( { [ -s "$hist" ] && jq -s 'map(select(.status == "final"))' "$hist" 2>/dev/null; } || echo '[]')
+jq -n --argjson h "$target" '
+  if ($h | length) == 0 then {beat: null, best: null, focus: null, focus_gap: null}
+  else ($h[-1]) as $l |
+    ([ $l.factors | to_entries[] | {k: .key, gap: ((1 - (.value // 0)) * ($l.weights[.key] // 0))} ] | max_by(.gap)) as $f |
+    {beat: $l.score, best: ($h | map(.score) | max), focus: $f.k, focus_gap: (($f.gap * 10 | round) / 10), last_task: $l.task_id}
+  end' > "$dir/target.json"
+jq -r 'if .beat == null then "TARGET: no previous score — this run sets the baseline. Aim for 100."
+       else "TARGET: beat \(.beat)/100 (best \(.best)) → aim for 100. Weakest factor last run: \(.focus) (\(.focus_gap) points lost). Quality first: efficiency never at the cost of acceptance criteria." end' "$dir/target.json"
