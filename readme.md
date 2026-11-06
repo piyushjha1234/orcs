@@ -1,72 +1,116 @@
-# Orcs — a token-lean, skill-driven delivery pipeline
+# Orcs — a model-invariant delivery harness for Claude Code
 
-Orcs turns a requirement into a tested, high-quality solution through specialist Claude Code agents. It is built to **save tokens**: every agent runs in a fresh session, gets only a compressed handover (not the whole conversation), talks in terse "caveman" voice, and discovers only the skills it actually needs per project.
+Orcs turns a requirement into a tested solution through specialist Claude Code agents.
+It is a **harness**, not a pipeline: the agents are intelligent, but the harness is
+authoritative. Rules that matter — scope, stage order, approvals, budgets — are enforced by
+scripts and a Claude Code hook, not by asking a model nicely.
+
+**Goal:** whatever model you choose, you get *exactly what you asked for* — after proper
+research, with nothing assumed and nothing extra. A strong model cannot add unrequested
+features; a weak model cannot silently skip a requirement. When a task is beyond the
+model, the harness stops and reports the gap instead of guessing.
 
 ```
-Requirement ─▶ Analyst ─▶ Architect ─▶ Developer ─▶ Tester
-                 │            │            │            │
-             02-analyst-  04-architect- 05-dev-     06-test-
-             handover     handover      handover    report
-                 └────────────┴─────── Task Observer ───────┘
-                        (observes every stage; reviews + suggests skills at the end)
+ Owner ──► Orchestrator (your main Claude Code session)
+              │ relays questions · shows you every contract · runs the gates
+              ▼
+ Analyst ─► Architect ─► micro-task DAG ─► Developer ×N (parallel, git worktrees)
+ (asks)     (asks)                              │  never ask — return a blocker
+                                                ▼
+                         Integration manager: scope gate → scope auditor → lint
+                                              → unit tests → merge → integration tests
+                                                ▼
+                                         Tester (once, independent) ─► Task Observer
+                                         (flaws only)                  (report + your
+                                                                        feedback → upskill)
 ```
 
-## The agents
+## How it works
 
-| Stage | Agent | Does | Writes |
-|---|---|---|---|
-| 1 | **analyst** | Researches (superpowers), asks every question, drafts requirements + epics | `01-requirements.md`, `02-analyst-handover.md` |
-| 2 | **architect** | Designs per epic (cost/scale/TTM/UX), offers options, sequences stories | `03-architecture.md`, `04-architect-handover.md` |
-| 3 | **developer** | Builds minimally & correctly, uses impeccable on frontend, breaks its own work | code, `05-dev-handover.md` |
-| 4 | **tester** | Executes positive/negative/edge/API/UI/stress + break-it; classifies bugs | `06-test-report.md` |
-| — | **task-observer** | Watches every stage, reviews the finished project, proposes user-level skills | `07-observer-notes.md` |
+- **Contracts, not prose handoffs.** Each stage writes a JSON contract
+  (`contracts/*.schema.json`) into `executions/<task-id>/`. Every requirement has a BR-ID
+  and acceptance criteria; every change must map to an approved BR-ID.
+- **You review every contract.** Requirement, architecture (each micro-task, including its
+  `complexity`), and test report are shown to you before the next agent runs. Nothing
+  advances without your explicit approval (`approve.sh` freezes the approved copy).
+- **Question rights by role.** Analyst and architect may ask (relayed by the main session —
+  subagents cannot prompt you). Developers never ask; they return a blocker. The tester asks
+  only about business-requirement flaws.
+- **Parallel developers, one tester.** The architect decomposes the design into micro-tasks
+  with disjoint file ownership. Up to three developers build in parallel, each in its own git
+  worktree. The integration manager merges only branches that pass every gate; then one
+  independent tester verifies the integrated product.
+- **Independent testing.** The tester designs cases from the requirements and design (never
+  from the developers' code) using the fixed `knowledge/TESTING_GUIDELINES.md`, with full
+  BR-ID traceability.
+- **Fast-path for small tasks.** `complexity: low` skips the DAG fan-out (one developer) but
+  never the scope gate, auditor, or tester. A trip-wire escalates a mislabelled task.
+- **Budgets and fail-loud.** Iterations, fix cycles, and retries are capped; on a breach the
+  run stops, keeps its state, and reports.
+- **Gets smarter every project.** The task observer measures each run from its contracts and
+  execution trace, finds root causes, and proposes changes to Orcs's own agents, knowledge,
+  and gates. You comment in the report's `### User Feedback` block and approve in
+  `### Owner Approval`; only approved changes are staged — committed to this repo, versioned.
 
-All deliverables land in the project's own `docs/` folder.
+## The gates
+
+| Gate | Script (`harness/`) |
+|---|---|
+| Contract shape, BR-ID uniqueness, traceability | `validate-contract.sh` |
+| Stage order — no agent without its approved inputs | `hooks/block-stage-advance.sh` (PreToolUse hook) |
+| File-level scope | `scope-gate.sh` |
+| Behaviour-level scope (independent auditor) | `scope-audit.sh` + `scope-auditor/PROMPT.md` |
+| Disjoint parallel work | `dag-ready.sh` |
+| Integration (scope → audit → lint → tests → merge) | `integration.sh` |
+| Budgets / fast-path escalation | `budgets.sh` / `complexity-tripwire.sh` |
+| Owner approval / upskill | `approve.sh` / `upskill-apply.sh` |
+
+The gates need only `bash`, `jq`, and `git`. Run their tests with `bash harness/tests/run.sh`.
 
 ## The skills
 
-Six official community skills do the heavy lifting (installed **globally**, never hand-generated):
+Six official community skills, installed globally:
 
-| Skill | Role | Source |
+| Skill | Role in the harness | Source |
 |---|---|---|
-| **superpowers** | kicks in at every stage: research + ask all questions before acting | `obra/superpowers-marketplace` |
-| **find-skills** | each agent discovers task-specific skills, installs them **project-level** with user approval | `vercel-labs/skills` |
-| **caveman** | terse, answer-first voice for all prose (never for code) | `JuliusBrussee/caveman` |
-| **claude-mem** | compresses each stage into the handover the next agent starts from | `thedotmack/claude-mem` |
-| **impeccable** | the developer's frontend quality gate — no AI slop | `pbakaus/impeccable` |
-| **task-observer** | observes sessions, proposes new user-level skills at project end | `rebelytics/one-skill-to-rule-them-all` |
+| **superpowers** | research before deciding (analyst, architect, every stage) | `obra/superpowers-marketplace` |
+| **find-skills** | per-stage task skills, installed project-level with your approval | `vercel-labs/skills` |
+| **caveman** | terse prose in chat and companion docs (never code or contracts) | `JuliusBrussee/caveman` |
+| **claude-mem** | human-readable companion docs beside each JSON contract | `thedotmack/claude-mem` |
+| **impeccable** | every frontend task — no AI slop | `pbakaus/impeccable` |
+| **task-observer** | observation log + the per-project upskill loop | `rebelytics/one-skill-to-rule-them-all` |
 
-Plus one summarised in-repo skill, **`orcs-pipeline`**, the contract every agent loads first.
+Plus the in-repo **`orcs-pipeline`** skill — the harness contract the orchestrator and every
+agent load first.
 
-## How to run a project
+## Running a project
 
-The user drives the pipeline stage by stage; each agent stops at a hard gate for sign-off.
+In your project, in a Claude Code session:
 
-1. Give the **analyst** your requirement. It researches, asks everything, and (with your OK) installs any project-level skills it needs, then writes its handover.
-2. Start a **new session** and run the **architect** on the analyst handover. Choose among the options it offers.
-3. New session → **developer** (gets analyst + architect handovers). Approve the build.
-4. New session → **tester** (gets analyst + architect + developer handovers). Read `06-test-report.md`.
-5. Run **task-observer** at the end; it proposes user-level skills and installs them only on your confirmation.
-
-## The hard gates
-
-- **Never assume** — ambiguity becomes a question.
-- **Research before deciding** — dilemmas become options with pros/cons (superpowers).
-- **Always confirm** — nothing advances past a gate without your explicit OK.
-- **Document the handoff** — every stage writes its doc (claude-mem summarised).
+1. `bash ~/.claude/orcs/harness/init-run.sh ORCS-001` — starts the run.
+2. Tell the session your requirement and that you want to run it through Orcs. The main
+   session follows the `orcs-pipeline` skill: dispatches the analyst, relays its questions,
+   shows you the requirement contract, and so on through every stage.
+3. Approve (or flag) each contract when asked. Answer blockers and flaws.
+4. At the end, read `docs/07-observer-report.md`, add your comments under
+   `### User Feedback`, and write `APPROVED: <numbers>` (or `APPROVED: none`).
 
 ## Install
 
 ```bash
 # macOS / Linux
 git clone <this-repo> && cd orcs
-./install.sh                 # global
-./install.sh --project DIR   # agents + orcs-pipeline into DIR/.claude (skills stay global)
+./install.sh                 # global (~/.claude)
+./install.sh --project DIR   # agents, skill, kit and hook into DIR/.claude (skills stay global)
 ```
 
 ```powershell
-# Windows (PowerShell)
+# Windows (PowerShell; the gates run in Git Bash)
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-Requires Node ≥ 22.20, `npx`, and the `claude` CLI. See `instructions.md` for details.
+Requires `jq` and `git` (and Git Bash on Windows) for the harness; Node ≥ 22.20, `npx`, and
+the `claude` CLI for the skills. See `instructions.md` for details.
+
+Design and plan: `docs/superpowers/specs/2026-11-07-orcs-harness-design.md`,
+`docs/superpowers/plans/2026-11-07-orcs-harness.md`.
