@@ -16,6 +16,8 @@ Commit it: it is the traceable, resumable record of the run.
 | `test-report.json` / `.approved.json` | tester / `approve.sh` | results, scenarios, traceability |
 | `approvals.log` | `approve.sh` | who approved which contract, when |
 | `budgets.json` | `init-run.sh`, `budgets.sh` | limits and counters |
-| `execution-trace.json` | `trace.sh` | deterministic events (token/cost null until Phase 4) |
+| `execution-trace.json` | `init-run.sh`, `trace.sh` | `started_at` + deterministic events, incl. owner waits |
+| `target.json` | `init-run.sh` | score to beat, best so far, last run's weakest factor |
+| `score.json` | `score.sh` | the run's reward score, every factor and input |
 
 This directory in the Orcs repo itself holds only this README.

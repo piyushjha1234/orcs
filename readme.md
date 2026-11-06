@@ -52,6 +52,24 @@ model, the harness stops and reports the gap instead of guessing.
   and gates. You comment in the report's `### User Feedback` block and approve in
   `### Owner Approval`; only approved changes are staged — committed to this repo, versioned.
 
+## The reward score
+
+After every project `harness/score.sh` computes a score out of 100 — plain code, no LLM:
+
+| Factor | Weight | Measured from |
+|---|---|---|
+| Correctness | 35 | approved BR-IDs passing in the approved test report |
+| Process quality | 20 | scope rejections, rework, escalations, blockers, budget breaches |
+| Owner satisfaction | 20 | your `SATISFACTION: n/10` line in the observer report |
+| Token efficiency | 10 | tokens per BR-ID from Claude Code's own transcripts vs a reference |
+| Delivery speed | 10 | harness minutes per BR-ID (time waiting on you excluded) vs a reference |
+| Completion | 5 | micro-tasks merged vs planned |
+
+If any approved BR-ID fails, the score is capped at 60 — efficiency cannot buy back missed
+scope. Scores are kept in `scores/history.jsonl` (versioned in this repo), and every new run
+starts with a target: beat the last score, with last run's weakest factor named. Weights and
+references are in `knowledge/scoring.conf`. Spec: `docs/superpowers/specs/2026-11-07-orcs-reward-score-design.md`.
+
 ## The gates
 
 | Gate | Script (`harness/`) |
@@ -65,6 +83,7 @@ model, the harness stops and reports the gap instead of guessing.
 | Budgets / fast-path escalation | `budgets.sh` / `complexity-tripwire.sh` |
 | Owner approval (sha256-locked) / upskill (approved proposals only) | `approve.sh` / `upskill-apply.sh` |
 | Developer worktree + in-flight tracking | `dev-worktree.sh` |
+| Reward score + measured tokens | `score.sh` / `tokens.sh` |
 
 The gates need only `bash`, `jq`, and `git`. Run their tests with `bash harness/tests/run.sh`.
 
@@ -94,7 +113,8 @@ In your project, in a Claude Code session:
    shows you the requirement contract, and so on through every stage.
 3. Approve (or flag) each contract when asked. Answer blockers and flaws.
 4. At the end, read `docs/07-observer-report.md`, add your comments under
-   `### User Feedback`, and write `APPROVED: <numbers>` (or `APPROVED: none`).
+   `### User Feedback`, rate the delivery with `SATISFACTION: n/10`, and write
+   `APPROVED: <numbers>` (or `APPROVED: none`). The final score is then recorded.
 
 ## Install
 

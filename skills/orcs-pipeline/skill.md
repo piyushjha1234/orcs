@@ -34,7 +34,9 @@ orchestrator parses it mechanically.
 ## The orchestrator's run sequence (main session)
 
 0. **Init**: in the project root run `bash ~/.claude/orcs/harness/init-run.sh ORCS-<n>`
-   (creates `executions/ORCS-<n>/`, writes `executions/ACTIVE`, links `.orcs/`).
+   (creates `executions/ORCS-<n>/`, writes `executions/ACTIVE`, links `.orcs/`) and state its
+   `TARGET:` line to the owner — the score to beat and last run's weakest factor. The goal is
+   a higher score than last time, reaching 100, **without** trading away correctness.
 1. **Analyst** — dispatch with the owner's raw ask. On `needs_answers`: ask the owner every
    `open_questions` item (AskUserQuestion), re-dispatch with the previous contract + answers.
    Count each round: `.orcs/harness/budgets.sh executions/<id>/budgets.json analyst_iterations`.
@@ -83,13 +85,20 @@ orchestrator parses it mechanically.
    `test-report.json` → `approve.sh … test-report …`. `flaws[]` → relay to the owner.
 8. **Task Observer** — dispatch; share `docs/07-observer-report.md` with the owner; the owner
    writes comments in `### User Feedback` and `APPROVED: …` in `### Owner Approval`.
-   Re-dispatch the observer to apply only the approved changes; it stages them with
-   `upskill-apply.sh`. The project is not done until this gate closes (or `APPROVED: none`).
+   The owner also writes `SATISFACTION: n/10`. Re-dispatch the observer to apply only the
+   approved changes (staged with `upskill-apply.sh`) and record the final score with
+   `.orcs/harness/score.sh executions/<id>`. Report the score, the previous score, and the
+   best to the owner. The project is not done until the upskill gate closes (or
+   `APPROVED: none`) and the score is final.
 9. **Clean up**: `git worktree remove` each `.orcs-wt/*`; delete `executions/ACTIVE`.
 
 Log each event with `.orcs/harness/trace.sh <id> <field> <value> [stage]` (deterministic
 fields only: stage_start/stage_end, iteration, rework_cycle, scope_violation, blocker,
-test_pass/test_fail, escalation, audit_verdict).
+test_pass/test_fail, escalation, audit_verdict, owner_wait_start/owner_wait_end).
+**Owner-wait tracing is mandatory**: `owner_wait_start` right before every question relay,
+contract review, blocker, or flaw you put to the owner, `owner_wait_end` when the answer
+arrives. The score's speed factor excludes only traced waits; untraced waits count as
+harness time.
 
 ## Gates (enforced — do not route around them)
 
@@ -105,6 +114,7 @@ test_pass/test_fail, escalation, audit_verdict).
 | Approved contracts unchanged | sha256 in `approvals.log` | `approve.sh`, hook, `integration.sh` |
 | Developer isolation + in-flight tracking | `dev-worktree.sh` | orchestrator, before dispatch |
 | Upskill only with owner approval | `upskill-apply.sh` | observer |
+| Reward score (deterministic, recorded) | `score.sh`, `tokens.sh`, `knowledge/scoring.conf` | observer, at project end |
 
 A gate that fails stops the step. Report the gate's message to the owner verbatim. Never
 edit an approved contract, a gate script, or a hook to make a step pass.
