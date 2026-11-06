@@ -9,6 +9,8 @@ for n in "$files" "$deps" "$iters"; do [[ "$n" =~ ^[0-9]+$ ]] || die "counts mus
 bash "$(dirname "$0")/validate-contract.sh" microtask "$mt" >/dev/null || exit 1
 [ "$(jq -r .complexity "$mt")" = "low" ] || { echo "OK: not a fast-path task ($(jq -r .complexity "$mt"))"; exit 0; }
 max_files="${ORCS_FASTPATH_MAX_FILES:-3}"; max_iters=$(jq -r '.budget.max_iterations' "$mt")
+[[ "$max_files" =~ ^[0-9]+$ ]] || die "ORCS_FASTPATH_MAX_FILES must be a non-negative integer, got: $max_files"
+[[ "$max_iters" =~ ^[0-9]+$ ]] || die "budget.max_iterations must be an integer, got: $max_iters"
 reasons=()
 [ "$files" -gt "$max_files" ] && reasons+=("changed $files files (fast-path max $max_files)")
 [ "$deps" -gt 0 ] && reasons+=("added $deps dependency/dependencies")

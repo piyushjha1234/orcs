@@ -63,7 +63,8 @@ model, the harness stops and reports the gap instead of guessing.
 | Disjoint parallel work | `dag-ready.sh` |
 | Integration (scope → audit → lint → tests → merge) | `integration.sh` |
 | Budgets / fast-path escalation | `budgets.sh` / `complexity-tripwire.sh` |
-| Owner approval / upskill | `approve.sh` / `upskill-apply.sh` |
+| Owner approval (sha256-locked) / upskill (approved proposals only) | `approve.sh` / `upskill-apply.sh` |
+| Developer worktree + in-flight tracking | `dev-worktree.sh` |
 
 The gates need only `bash`, `jq`, and `git`. Run their tests with `bash harness/tests/run.sh`.
 

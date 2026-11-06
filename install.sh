@@ -114,16 +114,23 @@ echo "  kit    -> $KIT (harness, contracts, knowledge)"
 
 # --- 3c. stage-advance hook (idempotent merge into settings.json) ---
 SETTINGS="$TARGET_BASE/settings.json"
-HOOK_CMD="bash \"$KIT/harness/hooks/block-stage-advance.sh\""
+if [ "$TARGET_BASE" = "$USER_CLAUDE" ]; then HOOK_CMD="bash \"$KIT/harness/hooks/block-stage-advance.sh\""
+else HOOK_CMD='bash "$CLAUDE_PROJECT_DIR/.claude/orcs/harness/hooks/block-stage-advance.sh"'; fi  # portable for a shared project
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
-jq -e . "$SETTINGS" >/dev/null 2>&1 || { echo "error: $SETTINGS is not valid JSON — fix it, then re-run" >&2; exit 1; }
+jq -e 'type=="object" and ((.hooks // {}) | type=="object") and ((.hooks.PreToolUse // []) | type=="array")' "$SETTINGS" >/dev/null 2>&1 \
+  || { echo "error: $SETTINGS has an unexpected shape (need an object; hooks an object; hooks.PreToolUse an array) — fix it, then re-run. Hook NOT installed." >&2; exit 1; }
 cp "$SETTINGS" "$SETTINGS.bak.$(date +%Y%m%d%H%M%S)"
 tmp="$(mktemp)"
-jq --arg cmd "$HOOK_CMD" '
+if ! jq --arg cmd "$HOOK_CMD" '
   .hooks.PreToolUse = ([ (.hooks.PreToolUse // [])[]
-      | .hooks = [ .hooks[] | select((.command // "") | test("block-stage-advance.sh") | not) ]
-      | select((.hooks | length) > 0) ]
-    + [ {matcher: "Agent|Task", hooks: [ {type: "command", command: $cmd} ]} ])' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+      | if has("hooks") then
+          (.hooks = [ (.hooks // [])[] | select((.command // "") | test("block-stage-advance.sh") | not) ])
+          | select((.hooks | length) > 0)
+        else . end ]
+    + [ {matcher: "Agent|Task", hooks: [ {type: "command", command: $cmd} ]} ])' "$SETTINGS" > "$tmp"; then
+  rm -f "$tmp"; echo "error: could not merge the hook into $SETTINGS — settings left unchanged. Hook NOT installed." >&2; exit 1
+fi
+mv "$tmp" "$SETTINGS"
 echo "  hook   -> $SETTINGS (PreToolUse Agent|Task; backup kept)"
 
 # --- 4. global CLAUDE.md enforcement block (idempotent) ---

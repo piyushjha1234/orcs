@@ -11,6 +11,7 @@ cat > "$R/docs/07-observer-report.md" <<MD
 ## Project ORCS-001 — 2026-11-07
 ### Proposed changes
 | 1 | agents/developer.md | add rule | rework x3 | fewer reworks |
+| 2 | knowledge/TESTING_GUIDELINES.md | add case | missed edge | coverage |
 ### User Feedback
 Looks right.
 ### Owner Approval
@@ -32,4 +33,16 @@ assert_pass "approved asset staged"               up agents/developer.md
 assert_pass "asset is in the index"               staged agents/developer.md
 rm "$R/docs/07-observer-report.md"
 assert_fail "missing report refused"              "cannot read" up agents/developer.md
+mkdir -p "$R/knowledge"; echo k > "$R/knowledge/TESTING_GUIDELINES.md"
+for bad in "APPROVED:" "APPROVED: none." "APPROVED: None — nothing" "APPROVED: no" "APPROVED: <numbers>" "APPROVED: 1, x"; do
+  report "$bad"; assert_fail "rejects malformed '$bad'" "malformed" up agents/developer.md
+done
+report "APPROVED: 1"
+assert_fail "file of an unapproved proposal refused" "not in approved proposals" up knowledge/TESTING_GUIDELINES.md
+report "APPROVED: 1, 2"
+assert_pass "files of approved proposals staged"  up agents/developer.md knowledge/TESTING_GUIDELINES.md
+report "APPROVED: 3"
+assert_fail "approved number with no table row"   "no proposal 3" up agents/developer.md
+report "APPROVED: 1"
+assert_fail "dot-dot path refused"                ".." up agents/../docs/07-observer-report.md
 finish

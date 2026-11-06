@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# validate-contract.sh <kind> <file.json>
+# validate-contract.sh [--approved <requirement.approved.json>] <kind> <file.json>
 # Deterministic contract check (jq). Enforces the fields/enums the gates depend on.
+# With --approved (architecture, test-report): every approved BR-ID must be covered and no
+# other BR-ID may appear — under-delivery and invented scope both fail.
 # JSON Schema files in contracts/ are the documented source; this is the runtime gate.
 source "$(dirname "$0")/lib/common.sh"
-[ $# -eq 2 ] || die "usage: validate-contract.sh <kind> <file.json>"
+approved=""
+if [ "${1:-}" = "--approved" ]; then [ -r "${2:-}" ] || die "cannot read approved requirement: ${2:-}"; approved="$2"; shift 2; fi
+[ $# -eq 2 ] || die "usage: validate-contract.sh [--approved <requirement.approved.json>] <kind> <file.json>"
 kind="$1"; file="$2"
 require_json_file "$file"
+[ -n "$approved" ] && require_json_file "$approved"
 
 read -r -d '' DEFS <<'JQ'
 def req($ks): $ks[] as $k | if has($k) then empty else "missing field: \($k)" end;
@@ -38,6 +43,7 @@ case "$kind" in
     (if has("new_dependencies") then (.new_dependencies[] | select((.justification // "")=="") | "new dependency lacks justification: \(.name)") else empty end),
     (if has("microtasks") then
       (if (.microtasks|length)==0 then "microtasks must not be empty" else empty end),
+      ([.microtasks[].task_id] | group_by(.)[] | select(length>1) | "duplicate micro-task id: \(.[0])"),
       (.microtasks | to_entries[] | .key as $i | .value | mt_errors("microtasks[\($i)]: "))
     else empty end)' ;;
   implementation) PROG='
@@ -48,6 +54,7 @@ case "$kind" in
     req(["task_id","results","scenarios","traceability","flaws","overall_status"]),
     (if has("overall_status") then enum("overall_status"; ["PASS","FAIL"]) else empty end),
     (if has("results") then (.results[] | (if (.status=="PASS" or .status=="FAIL") then empty else "invalid result status for \(.requirement_id)" end)) else empty end),
+    (if .overall_status=="PASS" and any(.results[]?; .status=="FAIL") then "overall_status PASS but a result is FAIL" else empty end),
     (if has("scenarios") and has("traceability") then
       (.traceability) as $t |
       (.scenarios[] | . as $s | if ($t[$s.requirement_id] // [] | index($s.id)) then empty
@@ -59,7 +66,29 @@ case "$kind" in
   *) die "unknown kind: $kind (requirement|architecture|microtask|implementation|test-report|execution-trace)" ;;
 esac
 
-errors=$(jq -r "$DEFS $PROG" "$file") || die "validator error on $file"
+COVER='empty'
+if [ -n "$approved" ]; then
+  case "$kind" in
+    architecture) COVER='
+      . as $c | ($ap[0].requirements | map(.id)) as $ok |
+      ([$c.requirement_mapping | keys[]]) as $mapped |
+      ([$c.microtasks[]?.requirements[]?] | unique) as $built |
+      (($mapped + $built | unique)[] | select(. as $b | $ok | index($b) | not) | "\(.) is not an approved BR-ID"),
+      ($ok[] | select(. as $b | $mapped | index($b) | not) | "\(.) not covered by requirement_mapping"),
+      ($ok[] | select(. as $b | $built | index($b) | not) | "\(.) not covered by any micro-task")' ;;
+    test-report) COVER='
+      . as $c | ($ap[0].requirements | map(.id)) as $ok |
+      ([$c.results[]?.requirement_id] | unique) as $tested |
+      (([$c.results[]?.requirement_id] + [$c.scenarios[]?.requirement_id] + [$c.traceability | keys[]] | unique)[]
+         | select(. as $b | $ok | index($b) | not) | "\(.) is not an approved BR-ID"),
+      ($ok[] | select(. as $b | $tested | index($b) | not) | "\(.) not tested (no result)"),
+      ($ok[] | select(. as $b | ($c.traceability[$b] // []) | length == 0) | "\(.) not traced to any test case")' ;;
+    *) die "--approved applies only to architecture and test-report" ;;
+  esac
+  errors=$(jq -r --slurpfile ap "$approved" "$DEFS ($PROG), ($COVER)" "$file") || die "validator error on $file"
+else
+  errors=$(jq -r "$DEFS $PROG" "$file") || die "validator error on $file"
+fi
 if [ -n "$errors" ]; then
   echo "orcs-harness: $kind contract INVALID ($file):" >&2
   printf '%s\n' "$errors" | sed 's/^/  - /' >&2

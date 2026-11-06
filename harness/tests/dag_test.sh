@@ -21,4 +21,13 @@ assert_fail "strict rejects cycle"        "cycle" bash "$D" --strict "$T/cycle.j
 assert_fail "unknown dependency refused"  "DEV-9" bash "$D" --strict "$T/unknown.json"
 assert_pass "--max 1 caps the batch"      bash -c "[ \"\$(bash '$D' --max 1 '$T/ok.json' '$T/none')\" = 'DEV-1' ]"
 assert_pass "all done → empty batch"      bash -c "printf 'DEV-1\nDEV-2\nDEV-3\n' > '$T/all'; [ -z \"\$(bash '$D' '$T/ok.json' '$T/all')\" ]"
+# in-flight: DEV-1(a) DEV-2(b) dispatched; DEV-1 merged; DEV-5(b, after DEV-1) must wait for DEV-2
+arch "$(mk DEV-1 '[]' '["src/a.py"]')" "$(mk DEV-2 '[]' '["src/b.py"]')" "$(mk DEV-5 '["DEV-1"]' '["src/b.py"]')" > "$T/inflight.json"
+printf 'DEV-1\n' > "$T/d1"; printf 'DEV-2\n' > "$T/if2"
+assert_pass "in-flight task not re-offered"      bash -c "! bash '$D' '$T/inflight.json' '$T/d1' '$T/if2' 2>/dev/null | grep -qx DEV-2"
+assert_pass "task sharing an in-flight file waits" bash -c "[ -z \"\$(bash '$D' '$T/inflight.json' '$T/d1' '$T/if2' 2>/dev/null)\" ]"
+printf 'DEV-1\nDEV-2\n' > "$T/d12b"
+assert_pass "runs once the in-flight task is done" bash -c "[ \"\$(bash '$D' '$T/inflight.json' '$T/d12b' /dev/null)\" = DEV-5 ]"
+printf 'DEV-1\nDEV-2\n' > "$T/if12"
+assert_pass "in-flight tasks count toward --max" bash -c "[ -z \"\$(bash '$D' --max 2 '$T/ok.json' '$T/none' '$T/if12' 2>/dev/null)\" ]"
 finish

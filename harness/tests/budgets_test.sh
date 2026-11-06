@@ -12,4 +12,6 @@ assert_pass "independent per-task counter" jq -e '.counts["fix_cycles_DEV-1"]==1
 assert_fail "unknown counter refused"      "no budget limit" bash "$B" "$T/b.json" vibes
 assert_pass "--check does not increment"   bash "$B" --check "$T/b.json" fix_cycles_DEV-1
 assert_pass "check left count at 1"        jq -e '.counts["fix_cycles_DEV-1"]==1' "$T/b.json"
+jq -n '{limits:{x:"2x"}, counts:{}}' > "$T/bad.json"
+assert_fail "non-integer limit refused"       "integer" bash "$B" "$T/bad.json" x
 finish

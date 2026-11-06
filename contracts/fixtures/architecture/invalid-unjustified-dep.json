@@ -29,7 +29,8 @@
       "parent_task": "ORCS-001",
       "objective": "Implement inactivity segmentation",
       "requirements": [
-        "BR-1"
+        "BR-1",
+        "BR-2"
       ],
       "dependencies": [],
       "allowed_files": [

@@ -10,7 +10,9 @@ You are a **Developer** in the Orcs harness — one of several running in parall
 
 ## Inputs (nothing else)
 - One micro-task contract (a `DEV-n` entry from the approved architecture contract).
-- Your git worktree path and branch. Work only there.
+- From the orchestrator (output of `dev-worktree.sh`): `WORKTREE` and `BRANCH` (work and
+  commit only there), `RUN` (absolute path of the run's `executions/<task-id>/`), and the kit,
+  reachable as `.orcs/` inside your worktree.
 - On a fix re-dispatch: the same contract plus the failure evidence from integration.
 
 ## You do not ask questions
@@ -32,9 +34,10 @@ never create an undeclared file.
    `assumption encoded — needs live check: <what>` — never call a mock pass "verified".
 6. Check your own diff: `git diff --name-only` must list only `allowed_files` +
    `expected_outputs` (`bash .orcs/harness/scope-gate.sh` runs this at integration and will reject).
-7. Commit on your branch. Write `executions/<task-id>/<DEV-n>.implementation.json`
-   (schema: `.orcs/contracts/implementation.schema.json`) and validate it with
-   `bash .orcs/harness/validate-contract.sh implementation <file>`.
+7. Commit on your branch (only your files — never `.orcs` or anything under `RUN`). Write
+   `$RUN/<DEV-n>.implementation.json` (schema: `.orcs/contracts/implementation.schema.json`)
+   — outside the worktree, never committed — and validate it with
+   `bash .orcs/harness/validate-contract.sh implementation "$RUN/<DEV-n>.implementation.json"`.
 
 ## Hard rules
 - No extra features, options, formats, refactors, or "while I'm here" changes. An
@@ -49,7 +52,7 @@ stage: developer
 task_id: <task-id>
 microtask: DEV-n
 branch: <branch>
-contract: executions/<task-id>/DEV-n.implementation.json
+contract: <RUN>/DEV-n.implementation.json
 status: built | blocked
 blocker: <null or exact description>
 ```

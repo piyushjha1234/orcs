@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# dag-ready.sh [--strict] [--max N] <architecture.json> [done.txt]
-# Default: print the next batch of ready micro-task ids (dependencies done, not done
-# themselves), at most N (default 3), never two that share a file — an overlapping task is
-# deferred to a later batch (stderr note). --strict: simulate every wave and fail on a
+# dag-ready.sh [--strict] [--max N] <architecture.json> [done.txt] [inflight.txt]
+# Default: print the next batch of ready micro-task ids (dependencies done, not done or in
+# flight themselves). In-flight tasks count toward the cap N (default 3) and their files are
+# reserved, so nothing new touches a file a running developer owns. Never two that share a
+# file — an overlapping task is deferred to a later batch (stderr note). --strict: simulate every wave and fail on a
 # same-wave file overlap, an unknown dependency, or a cycle (use at architecture review).
 source "$(dirname "$0")/lib/common.sh"
 strict=0; max=3
@@ -10,10 +11,11 @@ while [ $# -gt 0 ]; do case "$1" in
   --strict) strict=1; shift ;;
   --max) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || die "--max needs a positive integer"; max="$2"; shift 2 ;;
   *) break ;; esac; done
-[ $# -ge 1 ] && [ $# -le 2 ] || die "usage: dag-ready.sh [--strict] [--max N] <architecture.json> [done.txt]"
-arch="$1"; donef="${2:-}"
+[ $# -ge 1 ] && [ $# -le 3 ] || die "usage: dag-ready.sh [--strict] [--max N] <architecture.json> [done.txt] [inflight.txt]"
+arch="$1"; donef="${2:-}"; inff="${3:-}"
 require_json_file "$arch"
-done_json=$( { [ -n "$donef" ] && [ -f "$donef" ] && grep -v '^[[:space:]]*$' "$donef"; } | jq -R . | jq -s .)
+ids_of() { { [ -n "$1" ] && [ -f "$1" ] && grep -v '^[[:space:]]*$' "$1"; } | jq -R . | jq -s .; }
+done_json=$(ids_of "$donef"); inf_json=$(ids_of "$inff")
 
 if [ "$strict" -eq 1 ]; then
   problems=$(jq -r '
@@ -38,14 +40,15 @@ if [ "$strict" -eq 1 ]; then
   exit 0
 fi
 
-plan=$(jq -c --argjson done "$done_json" --argjson max "$max" '
-  [ .microtasks[] | select((.task_id as $t | $done | index($t)) == null)
+plan=$(jq -c --argjson done "$done_json" --argjson inf "$inf_json" --argjson max "$max" '
+  ([ .microtasks[] | select(.task_id as $t | $inf | index($t) != null) ]) as $running |
+  [ .microtasks[] | select((.task_id as $t | ($done + $inf) | index($t)) == null)
                   | select(.dependencies | all(. as $d | $done | index($d) != null)) ] as $ready |
-  reduce $ready[] as $t ({batch:[], files:[], deferred:[]};
+  reduce $ready[] as $t ({batch:[], files:[$running[] | (.allowed_files + .expected_outputs)[]], deferred:[], running:($running|length)};
     ($t.allowed_files + $t.expected_outputs) as $f |
-    if (.batch|length) >= $max then .deferred += ["\($t.task_id) (concurrency cap \($max))"]
+    if (.batch|length) + .running >= $max then .deferred += ["\($t.task_id) (concurrency cap \($max))"]
     elif ([ $f[] as $x | .files[] | select(. == $x) ] | length) > 0
-      then .deferred += ["\($t.task_id) (shares files with this batch — serialized)"]
+      then .deferred += ["\($t.task_id) (shares files with an in-flight or batched task — serialized)"]
     else .batch += [$t.task_id] | .files += $f end)
 ' "$arch") || die "could not evaluate DAG: $arch"
 jq -r '.deferred[]' <<<"$plan" | sed 's/^/orcs-harness: DEFERRED /' >&2

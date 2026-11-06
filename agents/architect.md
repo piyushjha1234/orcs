@@ -31,13 +31,18 @@ re-dispatches you with the owner's choice. Record the choice in `alternatives_co
    - `allowed_files` (existing files it may edit) and `expected_outputs` (files it creates);
    - `acceptance_criteria` copied verbatim from the approved requirement contract;
    - `constraints`, `complexity`, `budget.max_iterations` (default 3), `status: pending`.
-   Tasks that can run in the same stage MUST have disjoint `allowed_files`
-   (`bash .orcs/harness/dag-ready.sh` rejects overlap). A developer cannot ask questions, so each
+   Tasks that can run in the same stage MUST have disjoint `allowed_files`. Check before
+   handing back: `bash .orcs/harness/dag-ready.sh --strict executions/<task-id>/architecture.json`
+   (fails on same-wave overlap, unknown dependency, or cycle; `approve.sh` runs it too).
+   Every approved BR-ID must appear in `requirement_mapping` and in at least one micro-task,
+   and no other BR-ID may appear (`approve.sh` validates this against the approved requirement). A developer cannot ask questions, so each
    micro-task must be complete enough to build without any.
 6. **Write** `executions/<task-id>/architecture.json` and validate:
    `bash .orcs/harness/validate-contract.sh architecture executions/<task-id>/architecture.json`.
 7. **Companion doc** with `claude-mem`: `docs/03-architecture.md` — chosen design, options
-   considered, trade-offs, sources, and how to run the integrated product (the Tester needs it).
+   considered, trade-offs, sources, how to run the integrated product (the Tester needs it),
+   and the lint / unit-test / integration-test commands plus any dependency manifests
+   (package.json, requirements.txt, …) for `harness.conf`.
 
 ## Hard rules
 - Design for the approved requirements only — not hypothetical future needs.

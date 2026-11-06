@@ -1,0 +1,26 @@
+{
+  "task_id": "ORCS-001",
+  "results": [
+    {
+      "requirement_id": "BR-99",
+      "status": "PASS",
+      "evidence": "x"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "TC-1",
+      "requirement_id": "BR-99",
+      "type": "positive",
+      "steps": "s",
+      "expected": "e"
+    }
+  ],
+  "traceability": {
+    "BR-99": [
+      "TC-1"
+    ]
+  },
+  "flaws": [],
+  "overall_status": "PASS"
+}

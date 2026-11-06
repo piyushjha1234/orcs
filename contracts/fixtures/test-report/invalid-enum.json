@@ -5,6 +5,11 @@
       "requirement_id": "BR-1",
       "status": "PASS",
       "evidence": "TC-1,TC-2 executed"
+    },
+    {
+      "requirement_id": "BR-2",
+      "status": "PASS",
+      "evidence": "TC-3 executed"
     }
   ],
   "scenarios": [
@@ -21,12 +26,22 @@
       "type": "positive",
       "steps": "last purchase 91 days ago",
       "expected": "flagged"
+    },
+    {
+      "id": "TC-3",
+      "requirement_id": "BR-2",
+      "type": "positive",
+      "steps": "export flagged list",
+      "expected": "CSV has customer_id"
     }
   ],
   "traceability": {
     "BR-1": [
       "TC-1",
       "TC-2"
+    ],
+    "BR-2": [
+      "TC-3"
     ]
   },
   "flaws": [],

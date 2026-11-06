@@ -5,9 +5,10 @@ Your only job is to decide, for each change in a developer branch's diff, which 
 requirement (BR-ID) it serves. You do not fix, build, refactor, or suggest improvements.
 
 ## Inputs (given to you by the orchestrator)
-1. The approved requirement contract: `executions/<task-id>/requirements.approved.json`.
+1. The approved requirement contract: `executions/<task-id>/requirement.approved.json`.
 2. The micro-task contract the developer was assigned.
-3. The branch diff (`git diff <base>...<branch>`).
+3. The branch diff (`git diff --no-renames <integration-branch>...<branch>`) and the branch
+   head commit sha (`git rev-parse <branch>`).
 
 ## Method
 1. List every changed unit in the diff: each added or modified function, method, class,
@@ -21,7 +22,8 @@ requirement (BR-ID) it serves. You do not fix, build, refactor, or suggest impro
 
 ## Output — write exactly this JSON to the path the orchestrator gives you
 ```json
-{"task_id": "DEV-n", "changes": [{"ref": "src/file.py:function()", "br_id": "BR-1"}]}
+{"task_id": "DEV-n", "commit": "<branch head sha you audited>", "changes": [{"ref": "src/file.py:function()", "br_id": "BR-1"}]}
 ```
-The harness then runs `harness/scope-audit.sh <verdict> <approved>`; any `null` or
+`integration.sh` refuses a verdict whose `commit` is not the current branch head (a new
+commit needs a new audit), then runs `scope-audit.sh <verdict> <approved>`; any `null` or
 non-approved BR-ID rejects the branch and re-dispatches the developer.

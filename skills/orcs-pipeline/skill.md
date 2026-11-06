@@ -47,29 +47,37 @@ orchestrator parses it mechanically.
    **Every contract passes this gate: requirement, architecture (incl. each micro-task),
    test-report.** Never approve on the owner's behalf; silence is not approval.
 3. **Architect** — dispatch (the hook blocks it until the requirement is approved). Same
-   question loop, then review gate → `approve.sh … architecture …`. Before approval run
-   `.orcs/harness/dag-ready.sh executions/<id>/architecture.json` to prove the DAG is
-   schedulable (disjoint files per stage). Write the lint / unit / integration test commands
-   from `docs/03-architecture.md` into `executions/<id>/harness.conf`.
+   question loop, then review gate → `approve.sh … architecture …` (it refuses unless the
+   requirement is approved, every approved BR-ID is covered with no invented ones, and
+   `dag-ready.sh --strict` passes). Write the commands from `docs/03-architecture.md` into
+   `executions/<id>/harness.conf`: `LINT_CMD`, `UNIT_TEST_CMD`, `INTEGRATION_TEST_CMD`
+   (required; `none` to skip explicitly), `DEPENDENCY_FILES` (manifests, for the trip-wire).
+   Approved files are sha256-locked: never edit one — re-review and re-approve instead.
 4. **Path choice** — fast-path if the approved requirement is `complexity: low` and the
    architecture has exactly one micro-task; otherwise full path.
-5. **Developers** — create an integration branch `orcs/<id>/integration`. Loop:
-   - `dag-ready.sh executions/<id>/architecture.json executions/<id>/done.txt` → ready ids.
-   - For each ready id (max 3 at once): `git worktree add .orcs-wt/<DEV-n> -b orcs/<id>/<DEV-n> orcs/<id>/integration`;
-     dispatch one developer per worktree **in a single message** (parallel), each given only
-     its micro-task contract and worktree path. Fast-path: one developer, one worktree.
+5. **Developers** — create the integration branch `git branch orcs/<id>/integration` (do
+   **not** check it out anywhere; `integration.sh` refuses a checked-out integration branch).
+   Loop:
+   - `dag-ready.sh executions/<id>/architecture.approved.json executions/<id>/done.txt executions/<id>/inflight.txt`
+     → ready ids (in-flight tasks count toward the cap of 3 and keep their files reserved).
+   - For each ready id: `.orcs/harness/dev-worktree.sh <id> <DEV-n> orcs/<id>/integration`
+     (prints WORKTREE, BRANCH, RUN, KIT and marks the task in flight); dispatch one developer
+     per worktree **in a single message** (parallel), each given only its micro-task contract
+     and those paths. Fast-path: one developer, one worktree.
    - Handback `blocked` → relay the blocker to the owner; fix the contract via an architect
      re-dispatch + re-approval. Never let a developer guess.
-6. **Integration** (per built branch):
+6. **Integration** (per built branch, **one at a time**):
    - Dispatch the scope auditor (general-purpose subagent, brief `.orcs/harness/scope-auditor/PROMPT.md`)
-     on the branch diff; it writes `executions/<id>/<DEV-n>.audit.json`.
+     on the branch diff at its current head; it writes `executions/<id>/<DEV-n>.audit.json`
+     with that head's `commit`. Every new commit needs a new audit.
    - Run `.orcs/harness/integration.sh executions/<id> <DEV-n> orcs/<id>/<DEV-n> orcs/<id>/integration`.
-     It runs scope-gate → scope-audit → lint → unit tests → merge → integration tests and
-     updates `integration.json`. `REDISPATCH` → re-dispatch that developer with the evidence;
-     count `.orcs/harness/budgets.sh … fix_cycles_<DEV-n>`; breach → stop and report.
-   - Fast-path trip-wire after a fast-path build:
-     `.orcs/harness/complexity-tripwire.sh <microtask> <changed-count> <deps-added>`; exit ≠ 0
-     → escalate: re-run the architect for a full decomposition.
+     Order: approved-contract hashes → scope gate → scope audit → merge (temp worktree) →
+     lint → unit tests → integration tests → trip-wire (complexity low) → move the
+     integration branch. Evidence: `executions/<id>/<DEV-n>.integration.log`.
+   - `REDISPATCH` → count `.orcs/harness/budgets.sh executions/<id>/budgets.json fix_cycles_<DEV-n>`
+     (breach → stop and report), then re-dispatch that developer with the log.
+   - `ESCALATE` (a `low` task that turned out bigger) → re-run the architect for a full
+     decomposition, re-review, re-approve.
    - Repeat step 5 until every micro-task is merged and `integration.json` is `PASS`.
 7. **Tester** — dispatch (the hook blocks it until integration PASS). Review gate on
    `test-report.json` → `approve.sh … test-report …`. `flaws[]` → relay to the owner.
@@ -91,9 +99,11 @@ test_pass/test_fail, escalation, audit_verdict).
 | Stage order (no stage without its approved inputs) | `hooks/block-stage-advance.sh` | Claude Code PreToolUse hook — hard block |
 | File-level scope | `scope-gate.sh` | `integration.sh` |
 | Behaviour-level scope (independent auditor) | `scope-audit.sh` | `integration.sh` |
-| Disjoint parallel files | `dag-ready.sh` | orchestrator, before dispatch |
+| Disjoint parallel files, valid DAG | `dag-ready.sh` (`--strict` at approval) | `approve.sh` + orchestrator |
 | Budgets | `budgets.sh` | orchestrator |
-| Fast-path escalation | `complexity-tripwire.sh` | orchestrator |
+| Fast-path escalation | `complexity-tripwire.sh` | `integration.sh` (before the merge lands) |
+| Approved contracts unchanged | sha256 in `approvals.log` | `approve.sh`, hook, `integration.sh` |
+| Developer isolation + in-flight tracking | `dev-worktree.sh` | orchestrator, before dispatch |
 | Upskill only with owner approval | `upskill-apply.sh` | observer |
 
 A gate that fails stops the step. Report the gate's message to the owner verbatim. Never
