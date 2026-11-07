@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 #
-# Orcs installer — sets up the token-lean, skill-driven Orcs pipeline:
+# Orcs installer — sets up the Orcs Harness:
 #   * installs 6 official community skills GLOBALLY (user level)
 #   * removes the legacy home-grown Orcs skills
-#   * installs the Orcs agents + the summarised orcs-pipeline skill
+#   * installs the Orcs agents + the orcs-pipeline (harness contract) skill
+#   * installs the harness kit (gates, contracts, knowledge) -> <target>/orcs
+#   * registers the stage-advance hook (PreToolUse, Agent|Task) in <target>/settings.json
 #   * appends the global CLAUDE.md enforcement block (caveman + task-observer)
 #
 # Usage:
 #   ./install.sh                 # global install -> ~/.claude
-#   ./install.sh --project DIR   # agents + orcs-pipeline -> DIR/.claude
+#   ./install.sh --project DIR   # agents + skill + kit + hook -> DIR/.claude
 #                                #   (the 6 skills + CLAUDE.md stay global)
 #   ./install.sh --skip-skills   # don't (re)install the 6 external skills
 #   ./install.sh --help
 #
-# Requirements: node >= 22.20, npx, and the `claude` CLI on PATH.
+# Requirements: jq and git always; node >= 22.20, npx, and the `claude` CLI for the skills.
 # Run from inside a clone of the Orcs repo (must contain agents/ and skills/).
 
 set -euo pipefail
@@ -65,6 +67,7 @@ preflight() {
   [ "$ok" -eq 1 ] || { echo "Preflight failed. Fix the above and re-run (or use --skip-skills)." >&2; exit 1; }
 }
 [ "$SKIP_SKILLS" -eq 0 ] && preflight
+for c in jq git; do command -v "$c" >/dev/null 2>&1 || { echo "error: $c not found — the harness gates need it (macOS: brew install $c)." >&2; exit 1; }; done
 
 echo "Installing Orcs (agents+pipeline -> $TARGET_BASE)"
 
@@ -101,6 +104,35 @@ cp -R "$SRC_SKILLS/orcs-pipeline" "$DST_SKILLS/"
 echo "  agents -> $DST_AGENTS (5)"
 echo "  skill  -> $DST_SKILLS/orcs-pipeline"
 
+# --- 3b. harness kit (gates, contracts, knowledge) ---
+KIT="$TARGET_BASE/orcs"
+rm -rf "$KIT"; mkdir -p "$KIT"
+cp -R "$SCRIPT_DIR/harness" "$SCRIPT_DIR/contracts" "$SCRIPT_DIR/knowledge" "$KIT/"
+find "$KIT/harness" -name '*.sh' -exec chmod +x {} +
+echo "$SCRIPT_DIR" > "$KIT/SOURCE_REPO"
+echo "  kit    -> $KIT (harness, contracts, knowledge)"
+
+# --- 3c. stage-advance hook (idempotent merge into settings.json) ---
+SETTINGS="$TARGET_BASE/settings.json"
+if [ "$TARGET_BASE" = "$USER_CLAUDE" ]; then HOOK_CMD="bash \"$KIT/harness/hooks/block-stage-advance.sh\""
+else HOOK_CMD='bash "$CLAUDE_PROJECT_DIR/.claude/orcs/harness/hooks/block-stage-advance.sh"'; fi  # portable for a shared project
+[ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+jq -e 'type=="object" and ((.hooks // {}) | type=="object") and ((.hooks.PreToolUse // []) | type=="array")' "$SETTINGS" >/dev/null 2>&1 \
+  || { echo "error: $SETTINGS has an unexpected shape (need an object; hooks an object; hooks.PreToolUse an array) — fix it, then re-run. Hook NOT installed." >&2; exit 1; }
+cp "$SETTINGS" "$SETTINGS.bak.$(date +%Y%m%d%H%M%S)"
+tmp="$(mktemp)"
+if ! jq --arg cmd "$HOOK_CMD" '
+  .hooks.PreToolUse = ([ (.hooks.PreToolUse // [])[]
+      | if has("hooks") then
+          (.hooks = [ (.hooks // [])[] | select((.command // "") | test("block-stage-advance.sh") | not) ])
+          | select((.hooks | length) > 0)
+        else . end ]
+    + [ {matcher: "Agent|Task", hooks: [ {type: "command", command: $cmd} ]} ])' "$SETTINGS" > "$tmp"; then
+  rm -f "$tmp"; echo "error: could not merge the hook into $SETTINGS — settings left unchanged. Hook NOT installed." >&2; exit 1
+fi
+mv "$tmp" "$SETTINGS"
+echo "  hook   -> $SETTINGS (PreToolUse Agent|Task; backup kept)"
+
 # --- 4. global CLAUDE.md enforcement block (idempotent) ---
 CLAUDE_MD="$USER_CLAUDE/CLAUDE.md"
 mkdir -p "$USER_CLAUDE"
@@ -133,5 +165,6 @@ EOF
 fi
 
 echo
-echo "Done. Pipeline agents: analyst, architect, developer, tester, task-observer."
-echo "Global skills: find-skills, caveman, task-observer, impeccable, superpowers, claude-mem, orcs-pipeline."
+echo "Done. Harness agents: analyst, architect, developer (xN), tester, task-observer."
+echo "Kit: $KIT  — start a run in a project with: bash $KIT/harness/init-run.sh ORCS-001"
+echo "Global skills: find-skills, caveman, task-observer, impeccable, superpowers, claude-mem; harness skill: orcs-pipeline."

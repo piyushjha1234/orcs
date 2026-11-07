@@ -1,10 +1,12 @@
 <#
 Orcs installer (Windows / PowerShell) — mirrors install.sh.
 
-Sets up the token-lean, skill-driven Orcs pipeline:
+Sets up the Orcs Harness:
   * installs 6 official community skills GLOBALLY (user level)
   * removes the legacy home-grown Orcs skills
-  * installs the Orcs agents + the summarised orcs-pipeline skill
+  * installs the Orcs agents + the orcs-pipeline (harness contract) skill
+  * installs the harness kit (gates, contracts, knowledge) -> <target>\orcs
+  * registers the stage-advance hook (PreToolUse, Agent|Task) in <target>\settings.json
   * appends the global CLAUDE.md enforcement block (caveman + task-observer)
 
 Usage (from inside a clone of the Orcs repo):
@@ -13,7 +15,8 @@ Usage (from inside a clone of the Orcs repo):
   powershell -ExecutionPolicy Bypass -File .\install.ps1 -SkipSkills
   powershell -ExecutionPolicy Bypass -File .\install.ps1 -Help
 
-Requirements: Node >= 22.20, npx, and the `claude` CLI on PATH.
+Requirements: Git for Windows (provides bash) and jq always — the harness gates are bash
+scripts; Node >= 22.20, npx, and the `claude` CLI for the skills.
 #>
 
 [CmdletBinding()]
@@ -65,6 +68,11 @@ function Invoke-Preflight {
   if (-not $ok) { Write-Error "Preflight failed. Fix the above and re-run (or use -SkipSkills)."; exit 1 }
 }
 if (-not $SkipSkills) { Invoke-Preflight }
+foreach ($c in @('bash','jq','git')) {
+  if (-not (Get-Command $c -ErrorAction SilentlyContinue)) {
+    Write-Error "$c not found — the harness gates need it (bash ships with Git for Windows; jq: winget install jqlang.jq)."; exit 1
+  }
+}
 
 Write-Host "Installing Orcs (agents+pipeline -> $TargetBase)"
 
@@ -108,6 +116,34 @@ Copy-Item (Join-Path $SrcSkills 'orcs-pipeline') $dstPipeline -Recurse -Force
 Write-Host "  agents -> $DstAgents (5)"
 Write-Host "  skill  -> $DstSkills\orcs-pipeline"
 
+# --- 3b. harness kit (gates, contracts, knowledge) ---
+$Kit = Join-Path $TargetBase 'orcs'
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $Kit
+New-Item -ItemType Directory -Force -Path $Kit | Out-Null
+foreach ($d in @('harness','contracts','knowledge')) { Copy-Item (Join-Path $ScriptDir $d) $Kit -Recurse -Force }
+Set-Content -Path (Join-Path $Kit 'SOURCE_REPO') -Value $ScriptDir
+Write-Host "  kit    -> $Kit (harness, contracts, knowledge)"
+
+# --- 3c. stage-advance hook (idempotent merge into settings.json) ---
+$Settings = Join-Path $TargetBase 'settings.json'
+$HookScript = (Join-Path $Kit 'harness\hooks\block-stage-advance.sh') -replace '\\','/'
+$HookCmd = "bash `"$HookScript`""
+if (-not (Test-Path $Settings)) { Set-Content -Path $Settings -Value '{}' }
+Copy-Item $Settings "$Settings.bak.$(Get-Date -Format yyyyMMddHHmmss)"
+$cfg = Get-Content $Settings -Raw | ConvertFrom-Json
+if (-not $cfg.PSObject.Properties['hooks']) { $cfg | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) }
+$pre = @()
+if ($cfg.hooks.PSObject.Properties['PreToolUse']) {
+  foreach ($entry in @($cfg.hooks.PreToolUse)) {
+    $kept = @($entry.hooks | Where-Object { -not ("$($_.command)" -match 'block-stage-advance\.sh') })
+    if ($kept.Count -gt 0) { $entry.hooks = $kept; $pre += $entry }
+  }
+}
+$pre += [pscustomobject]@{ matcher = 'Agent|Task'; hooks = @([pscustomobject]@{ type = 'command'; command = $HookCmd }) }
+$cfg.hooks | Add-Member -NotePropertyName PreToolUse -NotePropertyValue $pre -Force
+$cfg | ConvertTo-Json -Depth 20 | Set-Content -Path $Settings -Encoding UTF8
+Write-Host "  hook   -> $Settings (PreToolUse Agent|Task; backup kept)"
+
 # --- 4. global CLAUDE.md enforcement block (idempotent) ---
 $ClaudeMd = Join-Path $UserClaude 'CLAUDE.md'
 New-Item -ItemType Directory -Force -Path $UserClaude | Out-Null
@@ -146,5 +182,6 @@ A subagent dispatched by a session already running task-observer does not re-run
 }
 
 Write-Host ""
-Write-Host "Done. Pipeline agents: analyst, architect, developer, tester, task-observer."
-Write-Host "Global skills: find-skills, caveman, task-observer, impeccable, superpowers, claude-mem, orcs-pipeline."
+Write-Host "Done. Harness agents: analyst, architect, developer (xN), tester, task-observer."
+Write-Host "Kit: $Kit  - start a run from Git Bash in a project: bash `"$Kit/harness/init-run.sh`" ORCS-001"
+Write-Host "Global skills: find-skills, caveman, task-observer, impeccable, superpowers, claude-mem; harness skill: orcs-pipeline."

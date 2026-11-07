@@ -1,0 +1,46 @@
+{
+  "task_id": "ORCS-001",
+  "approach": "Extend existing customer module",
+  "components": [
+    "Segmenter"
+  ],
+  "requirement_mapping": {
+    "BR-1": [
+      "Segmenter"
+    ]
+  },
+  "new_dependencies": [],
+  "alternatives_considered": [],
+  "implementation_steps": [
+    "Add segment()"
+  ],
+  "open_questions": [],
+  "microtasks": [
+    {
+      "task_id": "DEV-1",
+      "parent_task": "ORCS-001",
+      "objective": "Implement inactivity segmentation",
+      "requirements": [
+        "BR-1"
+      ],
+      "dependencies": [],
+      "allowed_files": [
+        "src/segment.py"
+      ],
+      "expected_outputs": [
+        "tests/test_segment.py"
+      ],
+      "acceptance_criteria": [
+        "Customers with last purchase older than 90 days are flagged"
+      ],
+      "constraints": [
+        "No new dependencies"
+      ],
+      "complexity": "low",
+      "budget": {
+        "max_iterations": 3
+      },
+      "status": "pending"
+    }
+  ]
+}
