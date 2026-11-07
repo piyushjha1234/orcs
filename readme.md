@@ -120,7 +120,7 @@ In your project, in a Claude Code session:
 
 ```bash
 # macOS / Linux
-git clone <this-repo> && cd orcs
+git clone https://github.com/piyushjha1234/orcs && cd orcs
 ./install.sh                 # global (~/.claude)
 ./install.sh --project DIR   # agents, skill, kit and hook into DIR/.claude (skills stay global)
 ```
