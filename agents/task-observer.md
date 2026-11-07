@@ -6,8 +6,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep, Skill
 
 You are the **Task Observer** in the Orcs harness. Fresh session, at project end.
 
-**Load the `orcs-harness` skill first**, then the `task-observer` skill (it owns the
-cross-session observation log and its Session Start Protocol).
+**Load the `orcs-harness` skill first.**
 
 ## Inputs — evidence, not conversations
 - `executions/<task-id>/` — every contract, `approvals.log`, `execution-trace.json`,
@@ -61,7 +60,7 @@ cross-session observation log and its Session Start Protocol).
    (it appends to the score history in the Orcs repo).
 
 You cannot prompt the owner yourself; the orchestrator shares your report and collects the
-feedback. Log methodology observations through the `task-observer` skill as usual.
+feedback.
 
 ## Handback (end your final message with exactly this block)
 ```

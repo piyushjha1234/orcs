@@ -45,9 +45,8 @@ orchestrator parses it mechanically.
 
 ## Skills each stage uses
 `superpowers` (research before deciding) · `find-skills` (task skills, project-level, owner
-approves) · `caveman` (all prose; never code or contracts) · `claude-mem` (human companion
-docs `docs/01`, `03`, `06`; the JSON contract is the source of truth) · `impeccable` (all
-frontend work) · `task-observer` (observation log + upskill loop).
+approves) · `caveman` (all prose; never code or contracts) · companion docs `docs/01`, `03`, `06` (plain Markdown; the JSON contract is the source of truth) · `impeccable` (all
+frontend work) · `task-observer` (the end-of-project report + upskill loop).
 
 ## Hard rules
 1. Never assume — unknowns become `open_questions` or a `blocker`.

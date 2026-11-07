@@ -22,9 +22,8 @@ model, the harness stops and reports the gap instead of guessing.
                          Integration manager: scope gate → scope auditor → lint
                                               → unit tests → merge → integration tests
                                                 ▼
-                                         Testers ×N (BR shards) ─► Task Observer
-                                         (flaws only)                  (report + your
-                                                                        feedback → upskill)
+                                         Testers ×N (BR shards)
+                                         (flaws only)
 ```
 
 ## How it works
@@ -55,10 +54,6 @@ model, the harness stops and reports the gap instead of guessing.
   never the scope gate, auditor, or tester. A trip-wire escalates a mislabelled task.
 - **Budgets and fail-loud.** Iterations, fix cycles, and retries are capped; on a breach the
   run stops, keeps its state, and reports.
-- **Gets smarter every project.** The task observer measures each run from its contracts and
-  execution trace, finds root causes, and proposes changes to Orcs's own agents, knowledge,
-  and gates. You comment in the report's `### User Feedback` block and approve in
-  `### Owner Approval`; only approved changes are staged — committed to this repo, versioned.
 
 ## The reward score
 
@@ -76,7 +71,7 @@ After every project `harness/score.sh` computes a score out of 100 — plain cod
 If any approved BR-ID fails, the score is capped at 60 — efficiency cannot buy back missed
 scope. Scores are kept in `scores/history.jsonl` (versioned in this repo), and every new run
 starts with a target: beat the last score, with last run's weakest factor named. Weights and
-references are in `knowledge/scoring.conf`. Spec: `docs/superpowers/specs/2026-11-07-orcs-reward-score-design.md`.
+references are in `knowledge/scoring.conf`.
 
 ## The gates
 
@@ -89,7 +84,7 @@ references are in `knowledge/scoring.conf`. Spec: `docs/superpowers/specs/2026-1
 | Disjoint parallel work | `dag-ready.sh` |
 | Integration (scope → audit → lint → tests → merge) | `integration.sh` |
 | Budgets / fast-path escalation | `budgets.sh` / `complexity-tripwire.sh` |
-| Owner approval (sha256-locked) / upskill (approved proposals only) | `approve.sh` / `upskill-apply.sh` |
+| Owner approval (sha256-locked) | `approve.sh` |
 | Developer worktree + in-flight tracking | `dev-worktree.sh` |
 | Reward score + measured tokens | `score.sh` / `tokens.sh` |
 
@@ -97,16 +92,14 @@ The gates need only `bash`, `jq`, and `git`. Run their tests with `bash harness/
 
 ## The skills
 
-Six official community skills, installed globally:
+Four official community skills, installed globally:
 
 | Skill | Role in the harness | Source |
 |---|---|---|
 | **superpowers** | research before deciding (analyst, architect, every stage) | `obra/superpowers-marketplace` |
 | **find-skills** | per-stage task skills, installed project-level with your approval | `vercel-labs/skills` |
 | **caveman** | terse prose in chat and companion docs (never code or contracts) | `JuliusBrussee/caveman` |
-| **claude-mem** | human-readable companion docs beside each JSON contract | `thedotmack/claude-mem` |
 | **impeccable** | every frontend task — no AI slop | `pbakaus/impeccable` |
-| **task-observer** | observation log + the per-project upskill loop | `rebelytics/one-skill-to-rule-them-all` |
 
 Plus the in-repo **`orcs-harness`** skill — the harness contract the orchestrator and every
 agent load first.
@@ -139,7 +132,4 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 Requires `jq` and `git` (and Git Bash on Windows) for the harness; Node ≥ 22.20, `npx`, and
-the `claude` CLI for the skills. See `instructions.md` for details.
-
-Design and plan: `docs/superpowers/specs/2026-11-07-orcs-harness-design.md`,
-`docs/superpowers/plans/2026-11-07-orcs-harness.md`.
+the `claude` CLI for the skills.

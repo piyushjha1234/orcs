@@ -2,12 +2,12 @@
 Orcs installer (Windows / PowerShell) — mirrors install.sh.
 
 Sets up the Orcs Harness:
-  * installs 6 official community skills GLOBALLY (user level)
+  * installs 4 official community skills GLOBALLY (user level)
   * removes the legacy home-grown Orcs skills
-  * installs the Orcs agents + the orcs-pipeline (harness contract) skill
+  * installs the Orcs agents + the orcs-harness (harness contract) skill
   * installs the harness kit (gates, contracts, knowledge) -> <target>\orcs
   * registers the stage-advance hook (PreToolUse, Agent|Task) in <target>\settings.json
-  * appends the global CLAUDE.md enforcement block (caveman + task-observer)
+  * appends the global CLAUDE.md enforcement block (caveman)
 
 Usage (from inside a clone of the Orcs repo):
   powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -74,21 +74,19 @@ foreach ($c in @('bash','jq','git')) {
   }
 }
 
-Write-Host "Installing Orcs (agents+pipeline -> $TargetBase)"
+Write-Host "Installing Orcs (agents+harness -> $TargetBase)"
 
-# --- 1. the 6 global skills (official sources only) ---
+# --- 1. the 4 global skills (official sources only) ---
 if (-not $SkipSkills) {
-  Write-Host "== Installing the 6 global skills =="
+  Write-Host "== Installing the 4 global skills =="
   & npx -y skills@latest add vercel-labs/skills --skill find-skills -g -y --copy -a claude-code
   # caveman repo bundles many skills; keep only 'caveman'
   & npx -y skills@latest add JuliusBrussee/caveman --skill caveman -g -y --copy -a claude-code
-  & npx -y skills@latest add rebelytics/one-skill-to-rule-them-all --skill task-observer -g -y --copy -a claude-code
   & npx -y impeccable@latest install --providers=claude --scope=global
   & claude plugin marketplace add obra/superpowers-marketplace
   & claude plugin install superpowers@superpowers-marketplace
-  & npx -y claude-mem@latest install
 } else {
-  Write-Host "== Skipping the 6 skill installs (-SkipSkills) =="
+  Write-Host "== Skipping the 4 skill installs (-SkipSkills) =="
 }
 
 # --- 2. remove legacy home-grown Orcs skills at user level ---
@@ -102,7 +100,7 @@ foreach ($s in $legacy) {
   Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $UserClaude "skills\$s")
 }
 
-# --- 3. Orcs agents + the summarised orcs-pipeline skill ---
+# --- 3. Orcs agents + the summarised orcs-harness skill ---
 $DstAgents = Join-Path $TargetBase 'agents'
 $DstSkills = Join-Path $TargetBase 'skills'
 New-Item -ItemType Directory -Force -Path $DstAgents, $DstSkills | Out-Null
@@ -110,11 +108,11 @@ foreach ($a in @('analyst','architect','developer','tester','task-observer')) {
   Copy-Item (Join-Path $SrcAgents "$a.md") $DstAgents -Force
 }
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $DstAgents 'retro.md')
-$dstPipeline = Join-Path $DstSkills 'orcs-pipeline'
-Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $dstPipeline
-Copy-Item (Join-Path $SrcSkills 'orcs-pipeline') $dstPipeline -Recurse -Force
+$dstHarness = Join-Path $DstSkills 'orcs-harness'
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $dstHarness
+Copy-Item (Join-Path $SrcSkills 'orcs-harness') $dstHarness -Recurse -Force
 Write-Host "  agents -> $DstAgents (5)"
-Write-Host "  skill  -> $DstSkills\orcs-pipeline"
+Write-Host "  skill  -> $DstSkills\orcs-harness"
 
 # --- 3b. harness kit (gates, contracts, knowledge) ---
 $Kit = Join-Path $TargetBase 'orcs'
@@ -147,10 +145,6 @@ Write-Host "  hook   -> $Settings (PreToolUse Agent|Task; backup kept)"
 # --- 4. global CLAUDE.md enforcement block (idempotent) ---
 $ClaudeMd = Join-Path $UserClaude 'CLAUDE.md'
 New-Item -ItemType Directory -Force -Path $UserClaude | Out-Null
-$ws    = Join-Path $UserClaude 'task-observer-workspace'
-$skill = Join-Path $UserClaude 'skills\task-observer'
-$envmd = Join-Path $skill 'references\environments.md'
-$projects = (Split-Path -Parent $ScriptDir)
 
 if ((Test-Path $ClaudeMd) -and (Select-String -Path $ClaudeMd -SimpleMatch 'orcs:global:start' -Quiet)) {
   Write-Host "  CLAUDE.md orcs block already present — not duplicated"
@@ -164,17 +158,6 @@ Operate in **caveman mode** for all natural-language output in every session: in
 
 - **Never** apply caveman to code, config, markup, data files, convention-bound commit messages, or any deliverable artifact — those stay correct and conventional.
 - Stays on until the user says "stop caveman" / "normal mode".
-
-## Task-observer activation
-
-Before the first tool call of any session — and before writing or proposing a plan — invoke the ``task-observer`` skill AND run its Session Start Protocol (loading the file is not enough; the protocol is a separate step). Any turn that will involve a tool call counts. After each task, list the observation records written this session and report a one-line summary (or "none logged" with a reason per correction/incident).
-
-Pinned paths (never resolve from the current working directory):
-- Workspace root: $ws
-- Skill directory: $skill
-- Projects root: $projects
-
-A subagent dispatched by a session already running task-observer does not re-run it; it writes nothing and puts findings in its report. For stricter enforcement, install the session-start hook from $envmd.
 <!-- orcs:global:end -->
 "@
   Add-Content -Path $ClaudeMd -Value $block
@@ -184,4 +167,4 @@ A subagent dispatched by a session already running task-observer does not re-run
 Write-Host ""
 Write-Host "Done. Harness agents: analyst, architect, developer (xN), tester, task-observer."
 Write-Host "Kit: $Kit  - start a run from Git Bash in a project: bash `"$Kit/harness/init-run.sh`" ORCS-001"
-Write-Host "Global skills: find-skills, caveman, task-observer, impeccable, superpowers, claude-mem; harness skill: orcs-pipeline."
+Write-Host "Global skills: find-skills, caveman, impeccable, superpowers; harness skill: orcs-harness."

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # score.sh <task-dir> [--rescore]   (run from the project root)
 # Deterministic reward score (0-100) for one finished Orcs run — no LLM involved.
-# Spec: docs/superpowers/specs/2026-11-07-orcs-reward-score-design.md
 #
 #   correctness  approved BR-IDs passing / approved BR-IDs        (test-report.approved.json)
 #   quality      1 - penalties, floor 0                           (integration.json, trace, budgets)

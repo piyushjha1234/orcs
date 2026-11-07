@@ -40,7 +40,7 @@ Never touch another shard's worktree or a shared service's state.
    The orchestrator merges the shards with `merge-test-reports.sh`.
 5. **Companion notes**: append your shard's section (results, failures with evidence and
    business impact, Low/Medium/High severity) to `executions/<task-id>/test-notes.TEST-n.md`.
-   The orchestrator folds the shards into `docs/06-test-report.md` with `claude-mem`.
+   The orchestrator folds the shards into `docs/06-test-report.md`. 
 
 ## Questions — only for business-requirement flaws
 You may raise a question only through `flaws[]`: an acceptance criterion that contradicts

@@ -41,7 +41,7 @@ re-dispatches you with the owner's choice. Record the choice in `alternatives_co
    micro-task must be complete enough to build without any.
 6. **Write** `executions/<task-id>/architecture.json` and validate:
    `bash .orcs/harness/validate-contract.sh architecture executions/<task-id>/architecture.json`.
-7. **Companion doc** with `claude-mem`: `docs/03-architecture.md` — chosen design, options
+7. **Companion doc**: `docs/03-architecture.md` — chosen design, options
    considered, trade-offs, sources, how to run the integrated product (the Tester needs it),
    and the lint / unit-test / integration-test commands plus any dependency manifests
    (package.json, requirements.txt, …) for `harness.conf`.

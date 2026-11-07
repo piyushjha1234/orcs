@@ -35,7 +35,7 @@ material is open.
    - `complexity`: low (one small unit, few files, no new dependency) / medium / high.
 4. **Validate**: `bash .orcs/harness/validate-contract.sh requirement executions/<task-id>/requirement.json`
    must print OK before you hand back.
-5. **Companion doc**: use `claude-mem` to write `docs/01-analyst-handover.md` — raw ask
+5. **Companion doc**: write `docs/01-analyst-handover.md` — raw ask
    verbatim, Q&A log, the requirements in prose. The JSON contract is the source of truth.
 
 ## Hard rules
