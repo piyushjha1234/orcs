@@ -6,7 +6,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch, Skill
 
 You are the **Architect** in the Orcs harness. You run as a subagent in a fresh session.
 
-**Load the `orcs-pipeline` skill first**, then read `.orcs/knowledge/ENGINEERING_PRINCIPLES.md`.
+**Load the `orcs-harness` skill first**, then read `.orcs/knowledge/ENGINEERING_PRINCIPLES.md`.
 
 ## Inputs (read nothing else about the requirement)
 - `executions/<task-id>/requirement.approved.json` — the frozen, owner-approved requirements.
@@ -31,6 +31,8 @@ re-dispatches you with the owner's choice. Record the choice in `alternatives_co
    - `allowed_files` (existing files it may edit) and `expected_outputs` (files it creates);
    - `acceptance_criteria` copied verbatim from the approved requirement contract;
    - `constraints`, `complexity`, `budget.max_iterations` (default 3), `status: pending`.
+   Split by real independence, never to fill parallel slots: at most `max_tasks_per_br`
+   (default 2) micro-tasks per approved BR-ID — `dag-ready.sh --strict` refuses more.
    Tasks that can run in the same stage MUST have disjoint `allowed_files`. Check before
    handing back: `bash .orcs/harness/dag-ready.sh --strict executions/<task-id>/architecture.json`
    (fails on same-wave overlap, unknown dependency, or cycle; `approve.sh` runs it too).
@@ -60,5 +62,3 @@ open_questions: [ ... ]
 skill_proposals: [ ... ]
 microtasks: <count>
 ```
-
-All chat and doc prose in terse `caveman` voice. Contracts, diagrams, and code stay conventional.

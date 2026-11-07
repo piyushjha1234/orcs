@@ -418,7 +418,7 @@ The project is **not "done"** until this completes.
    git: traceable, reversible, repeatable, headless-safe.)
 3. **Merge → proposed change set** against Orcs's own assets: agent instruction
    files, `ENGINEERING_PRINCIPLES.md`, `TESTING_GUIDELINES.md`, contract schemas, the
-   `orcs-pipeline` skill.
+   `orcs-harness` skill.
 4. **User approves** (explicit gate; nothing changes unapproved).
 5. **Commit to git** with a changelog entry = **versioned upskilling**. The next
    project's agents inherit the improved instructions.
@@ -459,7 +459,7 @@ orcs/
 ├── knowledge/                   # NEW — injected guidance
 │   ├── ENGINEERING_PRINCIPLES.md
 │   └── TESTING_GUIDELINES.md
-├── skills/orcs-pipeline/        # rewritten as the harness contract ("orcs-harness")
+├── skills/orcs-harness/        # rewritten as the harness contract ("orcs-harness")
 ├── docs/                        # per-project deliverables + this spec
 ├── install.sh / install.ps1     # updated to lay down harness/ contracts/ knowledge/
 ├── readme.md / instructions.md  # updated: "harness", not "pipeline"
@@ -491,7 +491,7 @@ orcs/
 - The precise shape of the micro-task DAG representation (inline in the architecture
   contract vs a separate `dag.json`).
 - Worktree naming/cleanup conventions and the merge order within a DAG stage.
-- How the orchestrator is expressed in C1: a rewritten `orcs-pipeline`/`orcs-harness`
+- How the orchestrator is expressed in C1: a rewritten `orcs-harness`/`orcs-harness`
   skill that the main session follows, plus the `harness/` Bash helpers it calls. The
   *binding* is decided (§5.8): hooks hard-block scope/contract/integration gates; the
   skill drives the soft flow. Builder picks hook event wiring and script internals.

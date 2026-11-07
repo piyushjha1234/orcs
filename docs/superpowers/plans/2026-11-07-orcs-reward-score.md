@@ -48,5 +48,5 @@
 - [ ] GREEN, suite, commit.
 
 ### Task 5: Docs + agents + skill + apply
-**Files:** `agents/task-observer.md` (`### Score`, `SATISFACTION:` line, focus on weakest factor), `skills/orcs-pipeline/skill.md` (owner-wait tracing, target at start, score step), `readme.md`, `executions/README.md`.
+**Files:** `agents/task-observer.md` (`### Score`, `SATISFACTION:` line, focus on weakest factor), `skills/orcs-harness/skill.md` (owner-wait tracing, target at start, score step), `readme.md`, `executions/README.md`.
 - [ ] Update; grep checks; suite; commit; reinstall globally; whole-branch review of the score range.

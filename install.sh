@@ -3,7 +3,7 @@
 # Orcs installer — sets up the Orcs Harness:
 #   * installs 6 official community skills GLOBALLY (user level)
 #   * removes the legacy home-grown Orcs skills
-#   * installs the Orcs agents + the orcs-pipeline (harness contract) skill
+#   * installs the Orcs agents + the orcs-harness (harness contract) skill
 #   * installs the harness kit (gates, contracts, knowledge) -> <target>/orcs
 #   * registers the stage-advance hook (PreToolUse, Agent|Task) in <target>/settings.json
 #   * appends the global CLAUDE.md enforcement block (caveman + task-observer)
@@ -94,15 +94,15 @@ for s in research-best-practices options-and-confirm write-handover-doc \
   rm -rf "$USER_CLAUDE/skills/$s"
 done
 
-# --- 3. Orcs agents + the summarised orcs-pipeline skill ---
+# --- 3. Orcs agents + the summarised orcs-harness skill ---
 DST_AGENTS="$TARGET_BASE/agents"
 DST_SKILLS="$TARGET_BASE/skills"
 mkdir -p "$DST_AGENTS" "$DST_SKILLS"
 cp "$SRC_AGENTS"/{analyst,architect,developer,tester,task-observer}.md "$DST_AGENTS/"
 rm -f "$DST_AGENTS/retro.md"
-cp -R "$SRC_SKILLS/orcs-pipeline" "$DST_SKILLS/"
+cp -R "$SRC_SKILLS/orcs-harness" "$DST_SKILLS/"
 echo "  agents -> $DST_AGENTS (5)"
-echo "  skill  -> $DST_SKILLS/orcs-pipeline"
+echo "  skill  -> $DST_SKILLS/orcs-harness"
 
 # --- 3b. harness kit (gates, contracts, knowledge) ---
 KIT="$TARGET_BASE/orcs"
@@ -133,14 +133,11 @@ fi
 mv "$tmp" "$SETTINGS"
 echo "  hook   -> $SETTINGS (PreToolUse Agent|Task; backup kept)"
 
-# --- 4. global CLAUDE.md enforcement block (idempotent) ---
+# --- 4. global CLAUDE.md enforcement block (installer-owned; replaced in place on re-install) ---
 CLAUDE_MD="$USER_CLAUDE/CLAUDE.md"
 mkdir -p "$USER_CLAUDE"
-if grep -q "orcs:global:start" "$CLAUDE_MD" 2>/dev/null; then
-  echo "  CLAUDE.md orcs block already present — not duplicated"
-else
-  cat >> "$CLAUDE_MD" <<'EOF'
-
+BLOCK="$(mktemp)"
+cat > "$BLOCK" <<'EOF'
 <!-- orcs:global:start -->
 ## Caveman voice — global, no exceptions
 
@@ -151,20 +148,57 @@ Operate in **caveman mode** for all natural-language output in every session: in
 
 ## Task-observer activation
 
-Before the first tool call of any session — and before writing or proposing a plan — invoke the `task-observer` skill AND run its Session Start Protocol (loading the file is not enough; the protocol is a separate step). Any turn that will involve a tool call counts. After each task, list the observation records written this session and report a one-line summary (or "none logged" with a reason per correction/incident).
+A SessionStart hook runs the task-observer session-start scan (`session-start-scan.sh`) and puts its output in context: that output is the Session Start Protocol's storage probe and scan — do not re-run them. The full `task-observer` skill is large (~50 KB), so load it only when it is needed: before writing an observation, at a todo checkpoint that has something to log, when you act on a `DUE:`, `GAP:` or `NOTE:` line from the scan, or when the user asks for a review. Observation still runs all session — a user correction, your own rule violation, or a workaround after a denial is logged in the same turn, loading the skill at that moment. After each task, list the observation records written this session and report a one-line summary (or "none logged" with a reason per correction/incident).
+
+If no scan output from the hook is in context (hook missing or failed), fall back: before the first tool call, invoke the `task-observer` skill and run its Session Start Protocol.
 
 Pinned paths (never resolve from the current working directory):
 - Workspace root: ~/.claude/task-observer-workspace
 - Skill directory: ~/.claude/skills/task-observer
 - Projects root: ~/Desktop/assets
 
-A subagent dispatched by a session already running task-observer does not re-run it; it writes nothing and puts findings in its report. For stricter enforcement, install the session-start hook from ~/.claude/skills/task-observer/references/environments.md.
+A subagent dispatched by a session already running task-observer does not re-run it; it writes nothing and puts findings in its report.
 <!-- orcs:global:end -->
 EOF
+if grep -q "orcs:global:start" "$CLAUDE_MD" 2>/dev/null; then
+  cp "$CLAUDE_MD" "$CLAUDE_MD.bak.$(date +%Y%m%d%H%M%S)"
+  tmp="$(mktemp)"
+  awk -v blk="$BLOCK" '
+    /<!-- orcs:global:start -->/ { while ((getline l < blk) > 0) print l; skip = 1; next }
+    /<!-- orcs:global:end -->/   { skip = 0; next }
+    !skip' "$CLAUDE_MD" > "$tmp" && mv "$tmp" "$CLAUDE_MD"
+  echo "  CLAUDE.md -> orcs global block replaced in place (backup kept)"
+else
+  { echo; cat "$BLOCK"; } >> "$CLAUDE_MD"
   echo "  CLAUDE.md -> appended orcs global block"
+fi
+rm -f "$BLOCK"
+
+# --- 4b. task-observer session-start scan as a user-level SessionStart hook (idempotent) ---
+# Runs the scan without loading the ~50 KB task-observer skill into every session; the
+# CLAUDE.md block above loads the skill only when an observation is written or reviewed.
+USER_SETTINGS="$USER_CLAUDE/settings.json"
+SCAN="$USER_CLAUDE/skills/task-observer/scripts/session-start-scan.sh"
+WS="$USER_CLAUDE/task-observer-workspace"
+SCAN_CMD="[ ! -f \"$SCAN\" ] || [ ! -d \"$WS\" ] || bash \"$SCAN\" \"$WS\""
+[ -f "$USER_SETTINGS" ] || echo '{}' > "$USER_SETTINGS"
+if jq -e 'type=="object" and ((.hooks // {}) | type=="object") and ((.hooks.SessionStart // []) | type=="array")' "$USER_SETTINGS" >/dev/null 2>&1; then
+  [ "$USER_SETTINGS" = "$SETTINGS" ] || cp "$USER_SETTINGS" "$USER_SETTINGS.bak.$(date +%Y%m%d%H%M%S)"
+  tmp="$(mktemp)"
+  if jq --arg cmd "$SCAN_CMD" '
+    .hooks.SessionStart = ([ (.hooks.SessionStart // [])[]
+        | if has("hooks") then
+            (.hooks = [ (.hooks // [])[] | select((.command // "") | test("session-start-scan.sh") | not) ])
+            | select((.hooks | length) > 0)
+          else . end ]
+      + [ {hooks: [ {type: "command", command: $cmd, timeout: 30, statusMessage: "task-observer scan"} ]} ])' "$USER_SETTINGS" > "$tmp"; then
+    mv "$tmp" "$USER_SETTINGS"; echo "  hook   -> $USER_SETTINGS (SessionStart task-observer scan)"
+  else rm -f "$tmp"; echo "warning: could not merge the task-observer scan hook into $USER_SETTINGS — left unchanged; CLAUDE.md falls back to loading the skill." >&2; fi
+else
+  echo "warning: $USER_SETTINGS has an unexpected shape (hooks.SessionStart must be an array) — scan hook NOT installed; CLAUDE.md falls back to loading the skill." >&2
 fi
 
 echo
-echo "Done. Harness agents: analyst, architect, developer (xN), tester, task-observer."
+echo "Done. Harness agents: analyst, architect, developer (xN), tester (xN), task-observer."
 echo "Kit: $KIT  — start a run in a project with: bash $KIT/harness/init-run.sh ORCS-001"
-echo "Global skills: find-skills, caveman, task-observer, impeccable, superpowers, claude-mem; harness skill: orcs-pipeline."
+echo "Global skills: find-skills, caveman, task-observer, impeccable, superpowers, claude-mem; harness skill: orcs-harness."

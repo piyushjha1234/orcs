@@ -17,10 +17,12 @@ model, the harness stops and reports the gap instead of guessing.
  Analyst ─► Architect ─► micro-task DAG ─► Developer ×N (parallel, git worktrees)
  (asks)     (asks)                              │  never ask — return a blocker
                                                 ▼
+                         Pre-check: scope gate → lint → unit tests (no agent cost)
+                                                ▼
                          Integration manager: scope gate → scope auditor → lint
                                               → unit tests → merge → integration tests
                                                 ▼
-                                         Tester (once, independent) ─► Task Observer
+                                         Testers ×N (BR shards) ─► Task Observer
                                          (flaws only)                  (report + your
                                                                         feedback → upskill)
 ```
@@ -36,10 +38,16 @@ model, the harness stops and reports the gap instead of guessing.
 - **Question rights by role.** Analyst and architect may ask (relayed by the main session —
   subagents cannot prompt you). Developers never ask; they return a blocker. The tester asks
   only about business-requirement flaws.
-- **Parallel developers, one tester.** The architect decomposes the design into micro-tasks
-  with disjoint file ownership. Up to three developers build in parallel, each in its own git
-  worktree. The integration manager merges only branches that pass every gate; then one
-  independent tester verifies the integrated product.
+- **Parallel developers, sharded testers.** The architect decomposes the design into
+  micro-tasks with disjoint file ownership (at most 2 per BR-ID). Up to ten developers build
+  in parallel, each in its own git worktree. A cheap pre-check (scope gate, lint, unit tests)
+  runs before any paid scope audit; the integration manager merges only branches that pass
+  every gate. Then independent testers verify the integrated product, one per shard of
+  BR-IDs — 1 for small projects, up to 10 for large ones — merged into one test report.
+- **Token guardrails.** `token-check.sh` runs before each dispatch wave: warns at 80 % and
+  stops at 150 % of the run's reference budget. Every agent's final message is the handback
+  block only; re-dispatches get the failing step's excerpt, not the whole log. Owner
+  playbook: `knowledge/TOKEN_EFFICIENCY.md`.
 - **Independent testing.** The tester designs cases from the requirements and design (never
   from the developers' code) using the fixed `knowledge/TESTING_GUIDELINES.md`, with full
   BR-ID traceability.
@@ -100,7 +108,7 @@ Six official community skills, installed globally:
 | **impeccable** | every frontend task — no AI slop | `pbakaus/impeccable` |
 | **task-observer** | observation log + the per-project upskill loop | `rebelytics/one-skill-to-rule-them-all` |
 
-Plus the in-repo **`orcs-pipeline`** skill — the harness contract the orchestrator and every
+Plus the in-repo **`orcs-harness`** skill — the harness contract the orchestrator and every
 agent load first.
 
 ## Running a project
@@ -109,7 +117,7 @@ In your project, in a Claude Code session:
 
 1. `bash ~/.claude/orcs/harness/init-run.sh ORCS-001` — starts the run.
 2. Tell the session your requirement and that you want to run it through Orcs. The main
-   session follows the `orcs-pipeline` skill: dispatches the analyst, relays its questions,
+   session follows the `orcs-harness` skill: dispatches the analyst, relays its questions,
    shows you the requirement contract, and so on through every stage.
 3. Approve (or flag) each contract when asked. Answer blockers and flaws.
 4. At the end, read `docs/07-observer-report.md`, add your comments under

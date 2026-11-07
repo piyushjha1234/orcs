@@ -16,7 +16,11 @@ case "$kind" in
     bash "$HD/validate-contract.sh" --approved "$dir/requirement.approved.json" "$kind" "$file" >/dev/null || exit 1 ;;
   *) bash "$HD/validate-contract.sh" "$kind" "$file" >/dev/null || exit 1 ;;
 esac
-[ "$kind" = architecture ] && { bash "$HD/dag-ready.sh" --strict "$file" >/dev/null || exit 1; }
+if [ "$kind" = architecture ]; then
+  per_br=$(jq -r '.limits.max_tasks_per_br // 2' "$dir/budgets.json" 2>/dev/null || echo 2)
+  [[ "$per_br" =~ ^[1-9][0-9]*$ ]] || die "budgets.json limits.max_tasks_per_br must be a positive integer, got: $per_br"
+  bash "$HD/dag-ready.sh" --strict --max-tasks-per-br "$per_br" "$file" >/dev/null || exit 1
+fi
 cp "$file" "$dir/$kind.approved.json"
 printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind" "$who" "$(basename "$file")" "$(sha256_of "$dir/$kind.approved.json")" >> "$dir/approvals.log"
 echo "APPROVED: $kind frozen at $dir/$kind.approved.json (by $who)"

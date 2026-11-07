@@ -16,7 +16,7 @@
 - `validate-contract.sh` enforces, via jq, the fields/enums the gates depend on; JSON Schema files are authoritative docs + optional ajv/jsonschema use when present.
 - Every deterministic script: exit `0` = pass, non-zero = fail, with a one-line reason on stderr. Gates never edit code or contracts.
 - Scope enforcement is never skipped, including the fast-path. Only orchestration (DAG/parallel/merge) is skipped for `complexity: low`.
-- The skill keeps its installed name `orcs-pipeline` (agents reference it by that name); its content becomes the harness contract.
+- The skill keeps its installed name `orcs-harness` (agents reference it by that name); its content becomes the harness contract.
 - Caveman applies to chat + handover prose only — never to code, schemas, scripts, or these deliverable files.
 - All prose deliverables (agents, knowledge, readme) use conventional professional English.
 
@@ -53,7 +53,7 @@ orcs/
 │   ├── hooks/block-stage-advance.sh   hook: run the stage's gate, block on non-zero
 │   └── tests/                   run.sh + per-script *_test.sh (plain bash)
 ├── agents/{analyst,architect,developer,tester,task-observer}.md   (rewritten)
-├── skills/orcs-pipeline/skill.md   (rewritten = harness contract)
+├── skills/orcs-harness/skill.md   (rewritten = harness contract)
 ├── executions/README.md  .gitkeep                  per-run contract+trace layout
 ├── install.sh  install.ps1                          (lay down new dirs)
 └── readme.md  instructions.md                       (harness, not pipeline)
@@ -149,16 +149,16 @@ orcs/
 - [ ] **Step 3:** Developer — blind-builds its micro-task only; never asks; returns `blocker` on ambiguity or undeclared-file need; emits `implementation.json`.
 - [ ] **Step 4:** Tester — designs cases from requirement+architecture+business reqs (not dev code), per `TESTING_GUIDELINES.md`; full BR-ID traceability; `flaw` only on business-requirement defect; emits `test-report.json`.
 - [ ] **Step 5:** Task-observer — reads traces + contracts (not transcripts); writes evidence-based `07-observer-report.md` with root-cause; runs the feedback+upskill gate.
-- [ ] **Step 6: Verify** each file states its contract output, its question permission, and "load orcs-pipeline skill first": `grep -L "orcs-pipeline" agents/*.md` → empty.
+- [ ] **Step 6: Verify** each file states its contract output, its question permission, and "load orcs-harness skill first": `grep -L "orcs-harness" agents/*.md` → empty.
 - [ ] **Step 7: Commit** `refactor(agents): rewrite stage agents for the harness contract model`.
 
-### Task 8: Rewrite the `orcs-pipeline` skill as the harness contract
+### Task 8: Rewrite the `orcs-harness` skill as the harness contract
 
-**Files:** Modify `skills/orcs-pipeline/skill.md`
+**Files:** Modify `skills/orcs-harness/skill.md`
 
-- [ ] **Step 1:** Rewrite to the orchestrator (C1) contract: role/question matrix (§5.1), contract handoffs, gates + hooks (§5.8), stage transitions (§5.11), human contract-review gate (§5.9), fast-path (§5.10), feedback loop (§6). Keep the skill name `orcs-pipeline`; title it "Orcs Harness".
-- [ ] **Step 2: Verify** the skill names all gates and the transition order: `grep -E "scope-gate|scope-audit|validate-contract|contract-review|fast-path" skills/orcs-pipeline/skill.md`.
-- [ ] **Step 3: Commit** `refactor(skill): orcs-pipeline becomes the harness contract`.
+- [ ] **Step 1:** Rewrite to the orchestrator (C1) contract: role/question matrix (§5.1), contract handoffs, gates + hooks (§5.8), stage transitions (§5.11), human contract-review gate (§5.9), fast-path (§5.10), feedback loop (§6). Keep the skill name `orcs-harness`; title it "Orcs Harness".
+- [ ] **Step 2: Verify** the skill names all gates and the transition order: `grep -E "scope-gate|scope-audit|validate-contract|contract-review|fast-path" skills/orcs-harness/skill.md`.
+- [ ] **Step 3: Commit** `refactor(skill): orcs-harness becomes the harness contract`.
 
 ---
 
@@ -253,6 +253,6 @@ orcs/
 
 - [ ] **Step 1:** Run the full test suite: `bash harness/tests/run.sh` → all PASS.
 - [ ] **Step 2:** Apply globally: `./install.sh` (auto-apply, as the owner asked). Capture output.
-- [ ] **Step 3: Verify** agents + skill + harness present under `~/.claude` and the Skill picker resolves `orcs-pipeline`; the global CLAUDE.md block is intact (not duplicated).
+- [ ] **Step 3: Verify** agents + skill + harness present under `~/.claude` and the Skill picker resolves `orcs-harness`; the global CLAUDE.md block is intact (not duplicated).
 - [ ] **Step 4:** Invoke `superpowers:requesting-code-review` for a whole-branch review on the most capable model; address blocking findings.
 - [ ] **Step 5:** Leave the branch `harness-redesign` committed for the owner to push (no push without explicit ask).

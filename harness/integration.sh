@@ -6,7 +6,9 @@
 #   fast-path trip-wire (complexity low) → move the integration branch.
 # Only a fully passing branch moves the integration branch. A fixable failure prints
 # "REDISPATCH <DEV-n>: <reason>"; a mislabelled fast-path task prints "ESCALATE <DEV-n>".
-# Both exit 1. Step output is kept in <task-dir>/<DEV-n>.integration.log as evidence.
+# Both exit 1. Step output is kept in <task-dir>/<DEV-n>.integration.log as evidence; a
+# REDISPATCH also writes <task-dir>/<DEV-n>.failure.txt, the failing step's excerpt — hand
+# that to the developer, not the whole log.
 # Commands come from <task-dir>/harness.conf: LINT_CMD, UNIT_TEST_CMD (optional),
 # INTEGRATION_TEST_CMD (required; "none" to skip explicitly), DEPENDENCY_FILES (optional,
 # space-separated manifests, e.g. "package.json requirements.txt").
@@ -45,7 +47,8 @@ tracef="$td/execution-trace.json"
 reject()   { record FAIL "$1"
              case "$1" in "scope gate"*|"scope audit"*) trace_event "$tracef" scope_violation "$dev: $1" integration ;;
                           *) trace_event "$tracef" rework_cycle "$dev: $1" integration ;; esac
-             echo "REDISPATCH $dev: $1 (evidence: $log)" >&2; exit 1; }
+             write_failure_excerpt "$log" "$td/$dev.failure.txt" "$1"
+             echo "REDISPATCH $dev: $1 (excerpt: $td/$dev.failure.txt; full log: $log)" >&2; exit 1; }
 escalate() { record FAIL "escalate: $1"; trace_event "$tracef" escalation "$dev: $1" integration
              echo "ESCALATE $dev: $1 — re-run the architect for a full decomposition" >&2; exit 1; }
 
@@ -86,6 +89,7 @@ fi
 
 git update-ref "refs/heads/$ib" "$(git -C "$wt" rev-parse HEAD)" "$old" || die "integration branch moved during run; re-run"
 record PASS "merged"
+rm -f "$td/$dev.failure.txt"
 grep -qx "$dev" "$td/done.txt" 2>/dev/null || echo "$dev" >> "$td/done.txt"
 if [ -f "$td/inflight.txt" ]; then grep -vx "$dev" "$td/inflight.txt" > "$mt.err" || true; cat "$mt.err" > "$td/inflight.txt"; fi
 echo "OK: $dev integrated into $ib — overall $(jq -r .overall_status "$ijson")"

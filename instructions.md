@@ -1,6 +1,6 @@
 # Installing Orcs
 
-Orcs is distributed as this repo and installed into Claude Code config dirs. It installs **6 official community skills**, one harness contract skill (`orcs-pipeline`), the five agents, and the **harness kit** — deterministic gate scripts, contract schemas, and knowledge files — plus a Claude Code hook that enforces stage order.
+Orcs is distributed as this repo and installed into Claude Code config dirs. It installs **6 official community skills**, one harness contract skill (`orcs-harness`), the five agents, and the **harness kit** — deterministic gate scripts, contract schemas, and knowledge files — plus a Claude Code hook that enforces stage order.
 
 ## What gets installed
 
@@ -8,7 +8,7 @@ Orcs is distributed as this repo and installed into Claude Code config dirs. It 
 |---|---|---|
 | 6 external skills (superpowers, find-skills, caveman, claude-mem, impeccable, task-observer) | `~/.claude` (+ plugins) | **global** |
 | 5 Orcs agents (analyst, architect, developer, tester, task-observer) | `<target>/.claude/agents/` | global or `--project` |
-| `orcs-pipeline` skill (the harness contract) | `<target>/.claude/skills/` | global or `--project` |
+| `orcs-harness` skill (the harness contract) | `<target>/.claude/skills/` | global or `--project` |
 | Harness kit: `harness/` gates, `contracts/` schemas, `knowledge/` principles + testing guidelines | `<target>/.claude/orcs/` | global or `--project` |
 | Stage-advance hook (PreToolUse, matcher `Agent\|Task`) | `<target>/.claude/settings.json` (merged; backup kept) | global or `--project` |
 | Caveman + task-observer enforcement block | `~/.claude/CLAUDE.md` | **global** |
@@ -53,7 +53,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -SkipSkills
 Both installers:
 1. install the 6 skills from their official sources (idempotent; `caveman` is scoped to just the `caveman` skill, not the whole repo bundle),
 2. remove the legacy home-grown Orcs skills from the user skills dir,
-3. copy the 5 agents + the `orcs-pipeline` skill,
+3. copy the 5 agents + the `orcs-harness` skill,
 4. copy the harness kit to `<target>/orcs/` and record this repo's path in `orcs/SOURCE_REPO` (the upskill loop stages approved changes here, so you can push them),
 5. merge the stage-advance hook into `<target>/settings.json` (idempotent; timestamped backup),
 6. append the global CLAUDE.md enforcement block (only if not already present).
@@ -66,7 +66,7 @@ Both installers:
 
 ## Verify
 
-1. `npx skills list` and `claude plugin list` show the skills; the Skill picker resolves `find-skills`, `caveman`, `task-observer`, `impeccable`, `superpowers`, `orcs-pipeline`.
+1. `npx skills list` and `claude plugin list` show the skills; the Skill picker resolves `find-skills`, `caveman`, `task-observer`, `impeccable`, `superpowers`, `orcs-harness`.
 2. Agent picker shows analyst, architect, developer, tester, task-observer (no retro).
 3. `bash ~/.claude/orcs/harness/tests/run.sh` prints `ALL HARNESS TESTS PASSED`.
 4. `/hooks` in Claude Code lists the PreToolUse `Agent|Task` hook running `block-stage-advance.sh`.
@@ -79,7 +79,7 @@ macOS / Linux:
 ```bash
 # agents + skill + kit
 rm -f ~/.claude/agents/{analyst,architect,developer,tester,task-observer}.md
-rm -rf ~/.claude/skills/orcs-pipeline ~/.claude/orcs
+rm -rf ~/.claude/skills/orcs-harness ~/.claude/orcs
 # external skills
 npx skills remove find-skills caveman task-observer impeccable -g
 claude plugin uninstall superpowers@superpowers-marketplace
@@ -93,7 +93,7 @@ Windows (PowerShell):
 ```powershell
 $c = "$env:USERPROFILE\.claude"
 'analyst','architect','developer','tester','task-observer' | ForEach-Object { Remove-Item -Force "$c\agents\$_.md" }
-Remove-Item -Recurse -Force "$c\skills\orcs-pipeline", "$c\orcs"
+Remove-Item -Recurse -Force "$c\skills\orcs-harness", "$c\orcs"
 npx skills remove find-skills caveman task-observer impeccable -g
 claude plugin uninstall superpowers@superpowers-marketplace
 npx claude-mem uninstall
