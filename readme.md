@@ -17,12 +17,13 @@ model, the harness stops and reports the gap instead of guessing.
  Analyst ─► Architect ─► micro-task DAG ─► Developer ×N (parallel, git worktrees)
  (asks)     (asks)                              │  never ask — return a blocker
                                                 ▼
+                         Pre-check: scope gate → lint → unit tests (no agent cost)
+                                                ▼
                          Integration manager: scope gate → scope auditor → lint
                                               → unit tests → merge → integration tests
                                                 ▼
-                                         Tester (once, independent) ─► Task Observer
-                                         (flaws only)                  (report + your
-                                                                        feedback → upskill)
+                                         Testers ×N (BR shards)
+                                         (flaws only)
 ```
 
 ## How it works
@@ -36,10 +37,16 @@ model, the harness stops and reports the gap instead of guessing.
 - **Question rights by role.** Analyst and architect may ask (relayed by the main session —
   subagents cannot prompt you). Developers never ask; they return a blocker. The tester asks
   only about business-requirement flaws.
-- **Parallel developers, one tester.** The architect decomposes the design into micro-tasks
-  with disjoint file ownership. Up to three developers build in parallel, each in its own git
-  worktree. The integration manager merges only branches that pass every gate; then one
-  independent tester verifies the integrated product.
+- **Parallel developers, sharded testers.** The architect decomposes the design into
+  micro-tasks with disjoint file ownership (at most 2 per BR-ID). Up to ten developers build
+  in parallel, each in its own git worktree. A cheap pre-check (scope gate, lint, unit tests)
+  runs before any paid scope audit; the integration manager merges only branches that pass
+  every gate. Then independent testers verify the integrated product, one per shard of
+  BR-IDs — 1 for small projects, up to 10 for large ones — merged into one test report.
+- **Token guardrails.** `token-check.sh` runs before each dispatch wave: warns at 80 % and
+  stops at 150 % of the run's reference budget. Every agent's final message is the handback
+  block only; re-dispatches get the failing step's excerpt, not the whole log. Owner
+  playbook: `knowledge/TOKEN_EFFICIENCY.md`.
 - **Independent testing.** The tester designs cases from the requirements and design (never
   from the developers' code) using the fixed `knowledge/TESTING_GUIDELINES.md`, with full
   BR-ID traceability.
@@ -47,10 +54,6 @@ model, the harness stops and reports the gap instead of guessing.
   never the scope gate, auditor, or tester. A trip-wire escalates a mislabelled task.
 - **Budgets and fail-loud.** Iterations, fix cycles, and retries are capped; on a breach the
   run stops, keeps its state, and reports.
-- **Gets smarter every project.** The task observer measures each run from its contracts and
-  execution trace, finds root causes, and proposes changes to Orcs's own agents, knowledge,
-  and gates. You comment in the report's `### User Feedback` block and approve in
-  `### Owner Approval`; only approved changes are staged — committed to this repo, versioned.
 
 ## The reward score
 
@@ -68,7 +71,7 @@ After every project `harness/score.sh` computes a score out of 100 — plain cod
 If any approved BR-ID fails, the score is capped at 60 — efficiency cannot buy back missed
 scope. Scores are kept in `scores/history.jsonl` (versioned in this repo), and every new run
 starts with a target: beat the last score, with last run's weakest factor named. Weights and
-references are in `knowledge/scoring.conf`. Spec: `docs/superpowers/specs/2026-11-07-orcs-reward-score-design.md`.
+references are in `knowledge/scoring.conf`.
 
 ## The gates
 
@@ -81,7 +84,7 @@ references are in `knowledge/scoring.conf`. Spec: `docs/superpowers/specs/2026-1
 | Disjoint parallel work | `dag-ready.sh` |
 | Integration (scope → audit → lint → tests → merge) | `integration.sh` |
 | Budgets / fast-path escalation | `budgets.sh` / `complexity-tripwire.sh` |
-| Owner approval (sha256-locked) / upskill (approved proposals only) | `approve.sh` / `upskill-apply.sh` |
+| Owner approval (sha256-locked) | `approve.sh` |
 | Developer worktree + in-flight tracking | `dev-worktree.sh` |
 | Reward score + measured tokens | `score.sh` / `tokens.sh` |
 
@@ -89,18 +92,16 @@ The gates need only `bash`, `jq`, and `git`. Run their tests with `bash harness/
 
 ## The skills
 
-Six official community skills, installed globally:
+Four official community skills, installed globally:
 
 | Skill | Role in the harness | Source |
 |---|---|---|
 | **superpowers** | research before deciding (analyst, architect, every stage) | `obra/superpowers-marketplace` |
 | **find-skills** | per-stage task skills, installed project-level with your approval | `vercel-labs/skills` |
 | **caveman** | terse prose in chat and companion docs (never code or contracts) | `JuliusBrussee/caveman` |
-| **claude-mem** | human-readable companion docs beside each JSON contract | `thedotmack/claude-mem` |
 | **impeccable** | every frontend task — no AI slop | `pbakaus/impeccable` |
-| **task-observer** | observation log + the per-project upskill loop | `rebelytics/one-skill-to-rule-them-all` |
 
-Plus the in-repo **`orcs-pipeline`** skill — the harness contract the orchestrator and every
+Plus the in-repo **`orcs-harness`** skill — the harness contract the orchestrator and every
 agent load first.
 
 ## Running a project
@@ -109,7 +110,7 @@ In your project, in a Claude Code session:
 
 1. `bash ~/.claude/orcs/harness/init-run.sh ORCS-001` — starts the run.
 2. Tell the session your requirement and that you want to run it through Orcs. The main
-   session follows the `orcs-pipeline` skill: dispatches the analyst, relays its questions,
+   session follows the `orcs-harness` skill: dispatches the analyst, relays its questions,
    shows you the requirement contract, and so on through every stage.
 3. Approve (or flag) each contract when asked. Answer blockers and flaws.
 4. At the end, read `docs/07-observer-report.md`, add your comments under
@@ -131,7 +132,4 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 Requires `jq` and `git` (and Git Bash on Windows) for the harness; Node ≥ 22.20, `npx`, and
-the `claude` CLI for the skills. See `instructions.md` for details.
-
-Design and plan: `docs/superpowers/specs/2026-11-07-orcs-harness-design.md`,
-`docs/superpowers/plans/2026-11-07-orcs-harness.md`.
+the `claude` CLI for the skills.

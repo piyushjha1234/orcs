@@ -46,6 +46,12 @@ assert_fail "failing integration test rejected"  "REDISPATCH DEV-1" run
 assert_pass "failed merge not applied"           bash -c "! git -C '$R' show $IB:src/segment.py | grep -q active"
 assert_pass "evidence log written"               test -s "$TD/DEV-1.integration.log"
 assert_fail "reject cites the evidence log"      "DEV-1.integration.log" run
+assert_pass "failure excerpt written"            grep -q "FAILED: integration tests failed" "$TD/DEV-1.failure.txt"
+assert_pass "excerpt starts at the failing step" bash -c "grep -q '^== integration tests' '$TD/DEV-1.failure.txt' && ! grep -q '^== unit tests' '$TD/DEV-1.failure.txt'"
+assert_fail "reject cites the excerpt"           "DEV-1.failure.txt" run
+dev src/segment.py "def segment(): return 'inactive'"; audit
+assert_pass "fixed branch integrates"            run
+assert_pass "excerpt removed after PASS"         test ! -e "$TD/DEV-1.failure.txt"
 
 setup; dev src/segment.py "def segment(): return 'inactive'"; rm -f "$TD/DEV-1.audit.json"
 assert_fail "missing auditor verdict refused"    "audit" run

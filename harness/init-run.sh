@@ -14,7 +14,7 @@ if [ -f executions/ACTIVE ]; then
 fi
 dir="executions/$id"; mkdir -p "$dir"
 [ -e .orcs ] || ln -s "$kit" .orcs
-[ -f "$dir/budgets.json" ] || jq -n '{limits:{analyst_iterations:2, architect_iterations:2, fix_cycles:3, tester_cycles:2, workflow_retries:3, unapproved_dependencies:0, concurrent_developers:3}, counts:{}}' > "$dir/budgets.json"
+[ -f "$dir/budgets.json" ] || jq -n '{limits:{analyst_iterations:2, architect_iterations:2, fix_cycles:3, tester_cycles:2, workflow_retries:3, unapproved_dependencies:0, concurrent_developers:10, max_testers:10, min_brs_per_tester:3, max_tasks_per_br:2, token_warn_pct:80, token_stop_pct:150}, counts:{}}' > "$dir/budgets.json"
 [ -f "$dir/execution-trace.json" ] || jq -n --arg id "$id" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{task_id:$id, started_at:$ts, tokens:null, cost_usd:null, events:[]}' > "$dir/execution-trace.json"
 touch "$dir/done.txt"
 echo "$id" > executions/ACTIVE

@@ -8,7 +8,7 @@ inst() { HOME="$T/home" bash "$ROOT/install.sh" --skip-skills --project "$T/proj
 S="$T/proj/.claude/settings.json"; K="$T/proj/.claude/orcs"
 assert_pass "install runs"                     inst
 assert_pass "agents installed"                 test -f "$T/proj/.claude/agents/developer.md"
-assert_pass "skill installed"                  test -f "$T/proj/.claude/skills/orcs-pipeline/skill.md"
+assert_pass "skill installed"                  test -f "$T/proj/.claude/skills/orcs-harness/skill.md"
 assert_pass "kit harness installed"            test -x "$K/harness/integration.sh"
 assert_pass "kit contracts installed"          test -f "$K/contracts/microtask.schema.json"
 assert_pass "kit knowledge installed"          test -f "$K/knowledge/TESTING_GUIDELINES.md"
@@ -30,5 +30,22 @@ assert_fail "settings array refused loudly"    "settings" bash -c "HOME='$T/home
 assert_fail "PreToolUse object refused loudly" "settings" bash -c "HOME='$T/home' bash '$ROOT/install.sh' --skip-skills --project '$T/p3'"
 assert_pass "group without hooks key tolerated" bash -c "HOME='$T/home' bash '$ROOT/install.sh' --skip-skills --project '$T/p4' >/dev/null 2>&1"
 assert_pass "hook installed despite odd group" jq -e '[.hooks.PreToolUse[].hooks[]?.command | select(test("block-stage-advance"))] | length == 1' "$T/p4/.claude/settings.json"
+assert_pass "orchestrator reference installed"  test -f "$T/proj/.claude/skills/orcs-harness/references/orchestrator.md"
+mkdir -p "$T/scan/.claude"
+echo '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash x/session-start-scan.sh y"}]},{"hooks":[{"type":"command","command":"keep-scan-neighbour"}]}]}}' > "$T/scan/.claude/settings.json"
+HOME="$T/scan" bash "$ROOT/install.sh" --skip-skills --project "$T/scanp" >/dev/null 2>&1
+assert_pass "leftover scan hook removed"         bash -c "! grep -q 'session-start-scan' '$T/scan/.claude/settings.json'"
+assert_pass "other SessionStart hook kept (scan)" grep -q keep-scan-neighbour "$T/scan/.claude/settings.json"
+assert_pass "no task-observer block in CLAUDE.md" bash -c "! grep -q 'Task-observer activation' '$T/home/.claude/CLAUDE.md'"
+assert_pass "no claude-mem in installer"          bash -c "! grep -q 'claude-mem' '$ROOT/install.sh'"
+mkdir -p "$T/old/.claude"
+printf 'my own rule\n\n<!-- orcs:global:start -->\nOLD BLOCK invoke the task-observer skill every session\n<!-- orcs:global:end -->\nmy trailing rule\n' > "$T/old/.claude/CLAUDE.md"
+echo '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"keep-me"}]}]}}' > "$T/old/.claude/settings.json"
+HOME="$T/old" bash "$ROOT/install.sh" --skip-skills --project "$T/oldp" >/dev/null 2>&1
+assert_pass "old block replaced in place"        bash -c "grep -q 'Caveman voice' '$T/old/.claude/CLAUDE.md' && ! grep -q 'OLD BLOCK' '$T/old/.claude/CLAUDE.md'"
+assert_pass "user text outside block kept"       bash -c "grep -qx 'my own rule' '$T/old/.claude/CLAUDE.md' && grep -qx 'my trailing rule' '$T/old/.claude/CLAUDE.md'"
+assert_pass "still exactly one block"            bash -c "[ \$(grep -c 'orcs:global:start' '$T/old/.claude/CLAUDE.md') -eq 1 ]"
+assert_pass "CLAUDE.md backup kept"              bash -c "ls '$T/old/.claude/' | grep -q 'CLAUDE.md.bak'"
+assert_pass "existing SessionStart hook kept"    jq -e '[.hooks.SessionStart[].hooks[].command] | index("keep-me") != null' "$T/old/.claude/settings.json"
 assert_pass "global install uses absolute path" bash -c "mkdir -p '$T/gh/.claude' && HOME='$T/gh' bash '$ROOT/install.sh' --skip-skills >/dev/null 2>&1 && jq -e '[.hooks.PreToolUse[].hooks[].command | select(test(\"block-stage-advance\"))][0] | test(\"$T/gh/.claude/orcs\")' '$T/gh/.claude/settings.json'"
 finish

@@ -43,6 +43,18 @@ scores_file() {
   if [ -f "$kit/SOURCE_REPO" ]; then repo=$(cat "$kit/SOURCE_REPO"); else repo="$kit"; fi
   echo "$repo/scores/history.jsonl"
 }
+# write_failure_excerpt <log> <out> <reason> — the failing step's slice of a log, small enough
+# to hand a re-dispatched developer instead of the whole log: the reason, then the log from the
+# last "== step" header (or its last 60 lines if none), capped at 30 head + 50 tail lines.
+write_failure_excerpt() {
+  local log="$1" out="$2" reason="$3" from slice n
+  from=$(grep -n '^== ' "$log" 2>/dev/null | tail -1 | cut -d: -f1)
+  if [ -n "$from" ]; then slice=$(tail -n +"$from" "$log"); else slice=$(tail -n 60 "$log" 2>/dev/null); fi
+  n=$(printf '%s\n' "$slice" | wc -l | tr -d ' ')
+  { echo "FAILED: $reason"; echo "(full log: $log)"; echo
+    if [ "$n" -gt 80 ]; then printf '%s\n' "$slice" | head -n 30; echo "… [$((n - 80)) lines omitted] …"; printf '%s\n' "$slice" | tail -n 50
+    else printf '%s\n' "$slice"; fi; } > "$out"
+}
 # trace_event <execution-trace.json> <field> <value-string> <stage> — append if the trace exists.
 trace_event() {
   [ -f "$1" ] || return 0

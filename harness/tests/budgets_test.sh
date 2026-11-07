@@ -12,6 +12,10 @@ assert_pass "independent per-task counter" jq -e '.counts["fix_cycles_DEV-1"]==1
 assert_fail "unknown counter refused"      "no budget limit" bash "$B" "$T/b.json" vibes
 assert_pass "--check does not increment"   bash "$B" --check "$T/b.json" fix_cycles_DEV-1
 assert_pass "check left count at 1"        jq -e '.counts["fix_cycles_DEV-1"]==1' "$T/b.json"
+jq -n '{limits:{tester_cycles:1}, counts:{}}' > "$T/tc.json"
+assert_pass "tester shard counter uses prefix limit" bash "$B" "$T/tc.json" tester_cycles_TEST-2
+assert_fail "tester shard counter breaches"   "BUDGET EXCEEDED: tester_cycles_TEST-2" bash "$B" "$T/tc.json" tester_cycles_TEST-2
+assert_pass "shard counters independent"       bash "$B" "$T/tc.json" tester_cycles_TEST-3
 jq -n '{limits:{x:"2x"}, counts:{}}' > "$T/bad.json"
 assert_fail "non-integer limit refused"       "integer" bash "$B" "$T/bad.json" x
 finish

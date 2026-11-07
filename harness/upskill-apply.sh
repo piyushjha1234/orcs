@@ -4,7 +4,7 @@
 # of the observer report carries a real owner approval line under "### Owner Approval":
 #   APPROVED: 1, 3        (or)        APPROVED: none
 # The template's HTML placeholder comment does not count. Only Orcs's own assets may be
-# staged: agents/ knowledge/ contracts/ harness/ skills/orcs-pipeline/. Commit is left to
+# staged: agents/ knowledge/ contracts/ harness/ skills/orcs-harness/. Commit is left to
 # the owner (or the orchestrator on the owner's say-so) — nothing is pushed.
 source "$(dirname "$0")/lib/common.sh"
 require_cmd git
@@ -42,8 +42,8 @@ for f in "$@"; do
   case "/$f/" in */../*|*/./*) die "path with .. or . segments refused: $f" ;; esac
   grep -qxF -- "$f" <<<"$allowed" || die "$f is not in approved proposals ($approval)"
   case "$f" in
-    agents/*|knowledge/*|contracts/*|harness/*|skills/orcs-pipeline/*) ;;
-    *) die "not an Orcs asset (allowed: agents/ knowledge/ contracts/ harness/ skills/orcs-pipeline/): $f" ;;
+    agents/*|knowledge/*|contracts/*|harness/*|skills/orcs-harness/*) ;;
+    *) die "not an Orcs asset (allowed: agents/ knowledge/ contracts/ harness/ skills/orcs-harness/): $f" ;;
   esac
   [ -e "$f" ] || die "file not found: $f"
 done

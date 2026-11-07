@@ -30,4 +30,13 @@ printf 'DEV-1\nDEV-2\n' > "$T/d12b"
 assert_pass "runs once the in-flight task is done" bash -c "[ \"\$(bash '$D' '$T/inflight.json' '$T/d12b' /dev/null)\" = DEV-5 ]"
 printf 'DEV-1\nDEV-2\n' > "$T/if12"
 assert_pass "in-flight tasks count toward --max" bash -c "[ -z \"\$(bash '$D' --max 2 '$T/ok.json' '$T/none' '$T/if12' 2>/dev/null)\" ]"
+# default cap is 10: 12 independent single-file tasks → first batch of 10
+many=(); for i in $(seq 1 12); do many+=("$(mk "DEV-$i" '[]' "[\"src/f$i.py\"]")"); done
+arch "${many[@]}" > "$T/many.json"
+assert_pass "default cap is 10"                  bash -c "[ \"\$(bash '$D' '$T/many.json' '$T/none' 2>/dev/null | wc -l | tr -d ' ')\" = 10 ]"
+# over-decomposition: every fixture task serves BR-1,BR-2 → 12 tasks for 2 BR-IDs (limit 2×2=4)
+assert_fail "strict refuses over-decomposition"  "over-decomposed: 12 micro-tasks for 2 BR-IDs" bash "$D" --strict "$T/many.json"
+assert_pass "strict allows 2 tasks per BR-ID"    bash "$D" --strict "$T/ok.json"
+assert_pass "--max-tasks-per-br raises the limit" bash "$D" --strict --max-tasks-per-br 12 "$T/many.json"
+assert_fail "--max-tasks-per-br validated"       "positive integer" bash "$D" --strict --max-tasks-per-br 0 "$T/many.json"
 finish

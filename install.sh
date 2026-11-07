@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 #
 # Orcs installer — sets up the Orcs Harness:
-#   * installs 6 official community skills GLOBALLY (user level)
+#   * installs 4 official community skills GLOBALLY (user level)
 #   * removes the legacy home-grown Orcs skills
-#   * installs the Orcs agents + the orcs-pipeline (harness contract) skill
+#   * installs the Orcs agents + the orcs-harness (harness contract) skill
 #   * installs the harness kit (gates, contracts, knowledge) -> <target>/orcs
 #   * registers the stage-advance hook (PreToolUse, Agent|Task) in <target>/settings.json
-#   * appends the global CLAUDE.md enforcement block (caveman + task-observer)
+#   * appends the global CLAUDE.md enforcement block (caveman)
 #
 # Usage:
 #   ./install.sh                 # global install -> ~/.claude
 #   ./install.sh --project DIR   # agents + skill + kit + hook -> DIR/.claude
-#                                #   (the 6 skills + CLAUDE.md stay global)
-#   ./install.sh --skip-skills   # don't (re)install the 6 external skills
+#                                #   (the 4 skills + CLAUDE.md stay global)
+#   ./install.sh --skip-skills   # don't (re)install the 4 external skills
 #   ./install.sh --help
 #
 # Requirements: jq and git always; node >= 22.20, npx, and the `claude` CLI for the skills.
@@ -69,21 +69,19 @@ preflight() {
 [ "$SKIP_SKILLS" -eq 0 ] && preflight
 for c in jq git; do command -v "$c" >/dev/null 2>&1 || { echo "error: $c not found — the harness gates need it (macOS: brew install $c)." >&2; exit 1; }; done
 
-echo "Installing Orcs (agents+pipeline -> $TARGET_BASE)"
+echo "Installing Orcs (agents+harness -> $TARGET_BASE)"
 
-# --- 1. the 6 global skills (official sources only) ---
+# --- 1. the 4 global skills (official sources only) ---
 if [ "$SKIP_SKILLS" -eq 0 ]; then
-  echo "== Installing the 6 global skills =="
+  echo "== Installing the 4 global skills =="
   npx -y skills@latest add vercel-labs/skills --skill find-skills -g -y --copy -a claude-code
   # caveman repo bundles many skills; keep only 'caveman'
   npx -y skills@latest add JuliusBrussee/caveman --skill caveman -g -y --copy -a claude-code
-  npx -y skills@latest add rebelytics/one-skill-to-rule-them-all --skill task-observer -g -y --copy -a claude-code
   npx -y impeccable@latest install --providers=claude --scope=global
   claude plugin marketplace add obra/superpowers-marketplace || true
   claude plugin install superpowers@superpowers-marketplace || true
-  npx -y claude-mem@latest install
 else
-  echo "== Skipping the 6 skill installs (--skip-skills) =="
+  echo "== Skipping the 4 skill installs (--skip-skills) =="
 fi
 
 # --- 2. remove legacy home-grown Orcs skills at user level ---
@@ -94,15 +92,15 @@ for s in research-best-practices options-and-confirm write-handover-doc \
   rm -rf "$USER_CLAUDE/skills/$s"
 done
 
-# --- 3. Orcs agents + the summarised orcs-pipeline skill ---
+# --- 3. Orcs agents + the summarised orcs-harness skill ---
 DST_AGENTS="$TARGET_BASE/agents"
 DST_SKILLS="$TARGET_BASE/skills"
 mkdir -p "$DST_AGENTS" "$DST_SKILLS"
 cp "$SRC_AGENTS"/{analyst,architect,developer,tester,task-observer}.md "$DST_AGENTS/"
 rm -f "$DST_AGENTS/retro.md"
-cp -R "$SRC_SKILLS/orcs-pipeline" "$DST_SKILLS/"
+cp -R "$SRC_SKILLS/orcs-harness" "$DST_SKILLS/"
 echo "  agents -> $DST_AGENTS (5)"
-echo "  skill  -> $DST_SKILLS/orcs-pipeline"
+echo "  skill  -> $DST_SKILLS/orcs-harness"
 
 # --- 3b. harness kit (gates, contracts, knowledge) ---
 KIT="$TARGET_BASE/orcs"
@@ -133,14 +131,11 @@ fi
 mv "$tmp" "$SETTINGS"
 echo "  hook   -> $SETTINGS (PreToolUse Agent|Task; backup kept)"
 
-# --- 4. global CLAUDE.md enforcement block (idempotent) ---
+# --- 4. global CLAUDE.md enforcement block (installer-owned; replaced in place on re-install) ---
 CLAUDE_MD="$USER_CLAUDE/CLAUDE.md"
 mkdir -p "$USER_CLAUDE"
-if grep -q "orcs:global:start" "$CLAUDE_MD" 2>/dev/null; then
-  echo "  CLAUDE.md orcs block already present — not duplicated"
-else
-  cat >> "$CLAUDE_MD" <<'EOF'
-
+BLOCK="$(mktemp)"
+cat > "$BLOCK" <<'EOF'
 <!-- orcs:global:start -->
 ## Caveman voice — global, no exceptions
 
@@ -149,22 +144,41 @@ Operate in **caveman mode** for all natural-language output in every session: in
 - **Never** apply caveman to code, config, markup, data files, convention-bound commit messages, or any deliverable artifact — those stay correct and conventional.
 - Stays on until the user says "stop caveman" / "normal mode".
 
-## Task-observer activation
-
-Before the first tool call of any session — and before writing or proposing a plan — invoke the `task-observer` skill AND run its Session Start Protocol (loading the file is not enough; the protocol is a separate step). Any turn that will involve a tool call counts. After each task, list the observation records written this session and report a one-line summary (or "none logged" with a reason per correction/incident).
-
-Pinned paths (never resolve from the current working directory):
-- Workspace root: ~/.claude/task-observer-workspace
-- Skill directory: ~/.claude/skills/task-observer
-- Projects root: ~/Desktop/assets
-
-A subagent dispatched by a session already running task-observer does not re-run it; it writes nothing and puts findings in its report. For stricter enforcement, install the session-start hook from ~/.claude/skills/task-observer/references/environments.md.
 <!-- orcs:global:end -->
 EOF
+if grep -q "orcs:global:start" "$CLAUDE_MD" 2>/dev/null; then
+  cp "$CLAUDE_MD" "$CLAUDE_MD.bak.$(date +%Y%m%d%H%M%S)"
+  tmp="$(mktemp)"
+  awk -v blk="$BLOCK" '
+    /<!-- orcs:global:start -->/ { while ((getline l < blk) > 0) print l; skip = 1; next }
+    /<!-- orcs:global:end -->/   { skip = 0; next }
+    !skip' "$CLAUDE_MD" > "$tmp" && mv "$tmp" "$CLAUDE_MD"
+  echo "  CLAUDE.md -> orcs global block replaced in place (backup kept)"
+else
+  { echo; cat "$BLOCK"; } >> "$CLAUDE_MD"
   echo "  CLAUDE.md -> appended orcs global block"
+fi
+rm -f "$BLOCK"
+
+# --- 4b. drop the task-observer scan hook left by earlier installs (idempotent) ---
+USER_SETTINGS="$USER_CLAUDE/settings.json"
+if [ -f "$USER_SETTINGS" ] && grep -q "session-start-scan.sh" "$USER_SETTINGS"; then
+  if jq -e 'type=="object"' "$USER_SETTINGS" >/dev/null 2>&1; then
+    cp "$USER_SETTINGS" "$USER_SETTINGS.bak.$(date +%Y%m%d%H%M%S)"
+    tmp="$(mktemp)"
+    if jq '.hooks.SessionStart = [ (.hooks.SessionStart // [])[]
+        | if has("hooks") then
+            (.hooks = [ (.hooks // [])[] | select((.command // "") | test("session-start-scan.sh") | not) ])
+            | select((.hooks | length) > 0)
+          else . end ]' "$USER_SETTINGS" > "$tmp"; then
+      mv "$tmp" "$USER_SETTINGS"; echo "  hook   -> removed the old task-observer scan hook from $USER_SETTINGS"
+    else rm -f "$tmp"; echo "warning: could not remove the old scan hook from $USER_SETTINGS — left unchanged." >&2; fi
+  else
+    echo "warning: $USER_SETTINGS has an unexpected shape — old scan hook NOT removed." >&2
+  fi
 fi
 
 echo
-echo "Done. Harness agents: analyst, architect, developer (xN), tester, task-observer."
+echo "Done. Harness agents: analyst, architect, developer (xN), tester (xN), task-observer."
 echo "Kit: $KIT  — start a run in a project with: bash $KIT/harness/init-run.sh ORCS-001"
-echo "Global skills: find-skills, caveman, task-observer, impeccable, superpowers, claude-mem; harness skill: orcs-pipeline."
+echo "Global skills: find-skills, caveman, impeccable, superpowers; harness skill: orcs-harness."

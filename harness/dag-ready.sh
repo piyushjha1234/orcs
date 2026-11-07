@@ -1,25 +1,32 @@
 #!/usr/bin/env bash
-# dag-ready.sh [--strict] [--max N] <architecture.json> [done.txt] [inflight.txt]
+# dag-ready.sh [--strict] [--max N] [--max-tasks-per-br K] <architecture.json> [done.txt] [inflight.txt]
 # Default: print the next batch of ready micro-task ids (dependencies done, not done or in
-# flight themselves). In-flight tasks count toward the cap N (default 3) and their files are
+# flight themselves). In-flight tasks count toward the cap N (default 10) and their files are
 # reserved, so nothing new touches a file a running developer owns. Never two that share a
 # file — an overlapping task is deferred to a later batch (stderr note). --strict: simulate every wave and fail on a
-# same-wave file overlap, an unknown dependency, or a cycle (use at architecture review).
+# same-wave file overlap, an unknown dependency, a cycle, or over-decomposition — more than
+# K micro-tasks per distinct BR-ID (default 2; every micro-task is a cold agent, so splitting
+# only to fill parallel slots costs tokens without adding independent work). Use at review.
 source "$(dirname "$0")/lib/common.sh"
-strict=0; max=3
+strict=0; max=10; per_br=2
 while [ $# -gt 0 ]; do case "$1" in
   --strict) strict=1; shift ;;
   --max) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || die "--max needs a positive integer"; max="$2"; shift 2 ;;
+  --max-tasks-per-br) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || die "--max-tasks-per-br needs a positive integer"; per_br="$2"; shift 2 ;;
   *) break ;; esac; done
-[ $# -ge 1 ] && [ $# -le 3 ] || die "usage: dag-ready.sh [--strict] [--max N] <architecture.json> [done.txt] [inflight.txt]"
+[ $# -ge 1 ] && [ $# -le 3 ] || die "usage: dag-ready.sh [--strict] [--max N] [--max-tasks-per-br K] <architecture.json> [done.txt] [inflight.txt]"
 arch="$1"; donef="${2:-}"; inff="${3:-}"
 require_json_file "$arch"
 ids_of() { { [ -n "$1" ] && [ -f "$1" ] && grep -v '^[[:space:]]*$' "$1"; } | jq -R . | jq -s .; }
 done_json=$(ids_of "$donef"); inf_json=$(ids_of "$inff")
 
 if [ "$strict" -eq 1 ]; then
-  problems=$(jq -r '
+  problems=$(jq -r --argjson k "$per_br" '
     (.microtasks | map(.task_id)) as $ids |
+    ( [ .microtasks[].requirements[] ] | unique | length ) as $nbr |
+    ( if $nbr > 0 and (.microtasks | length) > ($k * $nbr)
+      then "over-decomposed: \(.microtasks | length) micro-tasks for \($nbr) BR-IDs (max \($k) per BR-ID) — merge tasks that are not truly independent"
+      else empty end ),
     ( .microtasks[] | .task_id as $t | .dependencies[] | . as $d | select(($ids | index($d)) == null) | "unknown dependency \($d) in \($t)" ),
     ( [ .microtasks[] | {id:.task_id, deps:.dependencies, files:(.allowed_files + .expected_outputs)} ] as $all |
       def waves($done):
