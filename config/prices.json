@@ -1,0 +1,6 @@
+{
+  "note": "USD per million tokens. Used only when Claude Code cannot price a model itself.",
+  "claude-haiku-5-5": { "input": 0.1, "output": 0.5, "cache_write": 0.125, "cache_read": 0.01 },
+  "claude-sonnet-5-5": { "input": 2, "output": 10, "cache_write": 2.5, "cache_read": 0.1 },
+  "claude-opus-5-5": { "input": 4, "output": 20, "cache_write": 5, "cache_read": 0.2 }
+}

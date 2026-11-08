@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^q-[0-9]+$" },
+    "text": { "type": "string", "maxLength": 100, "description": "One short plain sentence." },
+    "options": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 4,
+      "items": { "type": "string", "maxLength": 70 }
+    },
+    "recommended": { "type": "integer", "minimum": 1, "maximum": 4, "description": "1-based index of the recommended option." }
+  },
+  "required": ["id", "text", "options", "recommended"]
+}

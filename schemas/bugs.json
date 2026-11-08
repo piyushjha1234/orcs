@@ -1,0 +1,46 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "status": { "type": "string", "enum": ["ask", "done"] },
+    "questions": { "type": "array", "maxItems": 3, "items": { "$ref": "question.json" } },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "case": { "type": "string", "pattern": "^tc-[0-9]+$" },
+          "status": { "type": "string", "enum": ["pass", "fail", "skipped"] }
+        },
+        "required": ["case", "status"]
+      }
+    },
+    "bugs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^bug-[0-9]+$" },
+          "risk": { "type": "string", "enum": ["high", "medium", "low"] },
+          "type": {
+            "type": "string",
+            "enum": ["functional", "ui", "ux", "accessibility", "responsive", "api", "integration", "e2e", "regression", "performance", "load", "stress", "security", "compatibility", "data_integrity", "error_recovery", "localization", "other"]
+          },
+          "br": { "type": "string", "pattern": "^(br-[0-9]+|none)$", "description": "Requirement id, or none." },
+          "env": { "type": "string", "pattern": "^(env-[0-9]+|none)$", "description": "Environment id from the test matrix, or none." },
+          "file": { "type": "string", "description": "File most likely at fault, or empty." },
+          "title": { "type": "string", "maxLength": 90 },
+          "steps": { "type": "array", "items": { "type": "string" } },
+          "expected": { "type": "string" },
+          "actual": { "type": "string" },
+          "evidence": { "type": "string" },
+          "status": { "type": "string", "enum": ["open", "fixed"] }
+        },
+        "required": ["id", "risk", "type", "br", "env", "file", "title", "steps", "expected", "actual", "evidence", "status"]
+      }
+    }
+  },
+  "required": ["status"]
+}

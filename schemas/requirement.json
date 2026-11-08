@@ -1,0 +1,166 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "description": "status ask: send questions only. status done: send every other field as real JSON values, never as strings.",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "ask",
+        "done"
+      ]
+    },
+    "questions": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "$ref": "question.json"
+      }
+    },
+    "goal": {
+      "type": "string"
+    },
+    "users": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "non_goals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "brs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^br-[0-9]+$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "text": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "must",
+              "should",
+              "could"
+            ]
+          },
+          "ac": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Testable acceptance criteria."
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "text",
+          "priority",
+          "ac"
+        ]
+      }
+    },
+    "targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "web",
+              "ios",
+              "android",
+              "desktop",
+              "api",
+              "cli",
+              "backend"
+            ]
+          }
+        },
+        "devices": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "desktop",
+              "tablet",
+              "phone"
+            ]
+          }
+        },
+        "browsers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "chrome",
+              "safari",
+              "firefox",
+              "edge"
+            ]
+          }
+        },
+        "expected_users": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Expected concurrent users; 0 if unknown or not relevant."
+        },
+        "logins": {
+          "type": "boolean"
+        },
+        "personal_data": {
+          "type": "boolean"
+        },
+        "payments": {
+          "type": "boolean"
+        },
+        "public_api": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "platforms",
+        "devices",
+        "browsers",
+        "expected_users",
+        "logins",
+        "personal_data",
+        "payments",
+        "public_api"
+      ]
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "status"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "orcs",
+  "version": "2.0.0",
+  "description": "Script-driven harness that delivers a project with four Claude Code agents.",
+  "type": "module",
+  "bin": {
+    "orcs": "src/cli.ts"
+  },
+  "files": [
+    "agents",
+    "schemas",
+    "config",
+    "templates",
+    "src"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "check": "tsc",
+    "test": "node --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2"
+  },
+  "license": "MIT"
+}

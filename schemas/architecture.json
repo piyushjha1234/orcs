@@ -1,0 +1,409 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "description": "status ask: send questions only. status done: send every other field as real JSON values, never as strings.",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "ask",
+        "done"
+      ]
+    },
+    "questions": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "$ref": "question.json"
+      }
+    },
+    "stack": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "layer": {
+            "type": "string"
+          },
+          "choice": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "layer",
+          "choice",
+          "version",
+          "why"
+        ]
+      }
+    },
+    "setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtime": {
+          "type": "string",
+          "description": "Runtimes and versions needed, for example node 22."
+        },
+        "install": {
+          "type": "string",
+          "description": "Shell command that installs dependencies; empty if none."
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "example": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "example"
+            ]
+          }
+        },
+        "commands": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "build": {
+              "type": "string"
+            },
+            "test": {
+              "type": "string"
+            },
+            "start": {
+              "type": "string"
+            },
+            "acceptance": {
+              "type": "string",
+              "description": "Runs every test in tests_dir and exits."
+            }
+          },
+          "required": [
+            "build",
+            "test",
+            "start",
+            "acceptance"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "description": "Address of the running app; empty if none."
+        },
+        "tests_dir": {
+          "type": "string",
+          "description": "Folder owned only by the tester, for example tests/acceptance/."
+        },
+        "ignore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Paths never committed, for example dist/."
+        }
+      },
+      "required": [
+        "runtime",
+        "install",
+        "env",
+        "commands",
+        "url",
+        "tests_dir",
+        "ignore"
+      ]
+    },
+    "interfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^if-[0-9]+$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "route",
+              "api",
+              "screen",
+              "component",
+              "table",
+              "module",
+              "job",
+              "other"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "spec": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "spec"
+        ]
+      }
+    },
+    "developers": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^dev-[0-9]+$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "brs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^br-[0-9]+$"
+            }
+          },
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact paths; a path ending in / means the whole folder."
+          },
+          "deps": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^dev-[0-9]+$"
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "interfaces": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^if-[0-9]+$"
+            }
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Verified facts the developer needs."
+          },
+          "ac": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "test": {
+            "type": "string",
+            "description": "Shell command that proves the task works."
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "brs",
+          "files",
+          "deps",
+          "steps",
+          "interfaces",
+          "facts",
+          "ac",
+          "test",
+          "skills"
+        ]
+      }
+    },
+    "test_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "functional",
+              "ui",
+              "ux",
+              "accessibility",
+              "responsive",
+              "api",
+              "integration",
+              "e2e",
+              "regression",
+              "performance",
+              "load",
+              "stress",
+              "security",
+              "compatibility",
+              "data_integrity",
+              "error_recovery",
+              "localization"
+            ]
+          }
+        },
+        "matrix": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^env-[0-9]+$"
+              },
+              "browser": {
+                "type": "string",
+                "pattern": "^[a-z0-9 ._-]+$",
+                "description": "none for non-browser targets."
+              },
+              "device": {
+                "type": "string",
+                "pattern": "^[a-z0-9 ._-]+$"
+              },
+              "primary": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "browser",
+              "device",
+              "primary"
+            ]
+          }
+        },
+        "load_users": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "types",
+        "matrix",
+        "load_users",
+        "tools"
+      ]
+    },
+    "flow": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^s-[0-9]+$"
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 60
+              }
+            },
+            "required": [
+              "id",
+              "label"
+            ]
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "type": "string",
+                "pattern": "^s-[0-9]+$"
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^s-[0-9]+$"
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 40
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "label"
+            ]
+          }
+        }
+      },
+      "required": [
+        "steps",
+        "links"
+      ]
+    },
+    "usage": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "status"
+  ]
+}

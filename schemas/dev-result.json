@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "status": { "type": "string", "enum": ["ask", "done"], "description": "done when the task's test command passes; ask with a blocker question otherwise." },
+    "questions": { "type": "array", "maxItems": 3, "items": { "$ref": "question.json" } }
+  },
+  "required": ["status"]
+}

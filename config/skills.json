@@ -1,0 +1,18 @@
+{
+  "recommended": [
+    {
+      "name": "impeccable",
+      "kind": "install",
+      "source": "pbakaus/impeccable",
+      "skill": "impeccable",
+      "what": "UI design and UX checks",
+      "when": "ui"
+    },
+    {
+      "name": "security-review",
+      "kind": "builtin",
+      "what": "Claude Code's built-in security review of the finished code",
+      "when": "sensitive"
+    }
+  ]
+}
