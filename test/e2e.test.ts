@@ -25,7 +25,7 @@ function autoAnswer(id: string): () => void {
         a = '2';
       }
       if (q.text.startsWith('What should change')) a = 'Keep it simple.';
-      if (q.text.startsWith('Add impeccable')) a = '2';
+      if (q.options.includes('Only the security review')) a = String(q.options.indexOf('Only the security review') + 1);
       if (q.text === 'How hard should AI test it?') a = '2';
       if (q.text === 'What next?') {
         a = nextWhat;

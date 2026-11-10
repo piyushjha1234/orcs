@@ -23,9 +23,76 @@ export function since(iso: string | undefined): string {
   return iso ? minutes((Date.now() - Date.parse(iso)) / 60_000) : '';
 }
 
-export function short(s: string, n: number): string {
-  const t = s.replace(/\s+/g, ' ').trim();
-  return t.length <= n ? t : t.slice(0, n - 1) + '…';
+const SPIN = ['|', '/', '-', '\\'];
+const LINE = 78;
+
+function wrap(text: string, width: number): string[] {
+  const words = text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  for (const w of words) {
+    const next = current ? `${current} ${w}` : w;
+    if (next.length <= width || !current) current = next;
+    else {
+      lines.push(current);
+      current = w;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [''];
+}
+
+// Whole sentences only. A long first sentence is kept intact. Later sentences stop
+// once the text would run past three lines.
+export function brief(text: string, maxSentences = 3): string {
+  const raw = text.replace(/\r/g, '').trim();
+  if (!raw) return '';
+  const flat = raw.replace(/\s+/g, ' ').trim();
+  const parts = flat.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((s) => s.trim()).filter(Boolean) ?? [];
+  const finished = parts.filter((s) => /[.!?]$/.test(s));
+  const pool = finished.length ? finished : raw.split('\n').map((l) => l.trim()).filter(Boolean);
+  const kept: string[] = [];
+  for (const s of pool) {
+    if (kept.length >= maxSentences) break;
+    const next = [...kept, s].join(' ');
+    if (kept.length && wrap(next, LINE).length > 3) break;
+    kept.push(s);
+  }
+  return (kept.join(' ') || pool[0] || flat).trim();
+}
+
+export function short(s: string, _n?: number): string {
+  return brief(s, 2);
+}
+
+function fit(prefix: string, text: string, width = LINE): string[] {
+  const head = prefix.replace(/\s+$/, '');
+  const pad = ' '.repeat(Math.max(2, Math.min(head.length, 8)));
+  const words = text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  if (!words.length) return head ? [head] : [];
+  const lines: string[] = [];
+  let current = head;
+  for (const w of words) {
+    const next = current ? `${current} ${w}` : w;
+    if (next.length <= width || current === head) current = next;
+    else {
+      lines.push(current);
+      current = `${pad}${w}`;
+    }
+  }
+  lines.push(current);
+  return lines;
+}
+
+export function elapsedClock(iso: string | undefined): string {
+  const start = iso ? Date.parse(iso) : Date.now();
+  const s = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(sec).padStart(2, '0');
+  return h ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
 }
 
 export function table(headers: string[], rows: (string | number)[][]): string[] {
@@ -34,7 +101,7 @@ export function table(headers: string[], rows: (string | number)[][]): string[] 
   return cells.map((r) => r.map((c, i) => (i === r.length - 1 ? c : c.padEnd(widths[i]))).join('  ').trimEnd());
 }
 
-const STAGE: Record<Stage, string> = {
+export const STAGE: Record<Stage, string> = {
   analyst: 'analyst working',
   skills: 'choosing skills',
   architect: 'architect working',
@@ -48,7 +115,7 @@ const STAGE: Record<Stage, string> = {
   done: 'done',
 };
 
-const WORD: Record<TaskState['status'], string> = {
+export const WORD: Record<TaskState['status'], string> = {
   waiting: 'waiting',
   building: 'building',
   checking: 'checking',
@@ -58,53 +125,63 @@ const WORD: Record<TaskState['status'], string> = {
   failed: 'failed',
 };
 
-export function header(s: State, usage: Usage[]): string {
+export function header(s: State, usage: Usage[], took?: string): string {
   const eff = usage.reduce((n, u) => n + u.effective, 0);
   const cost = usage.reduce((n, u) => n + u.cost, 0);
   const end = s.ended_at ? Date.parse(s.ended_at) : Date.now();
-  const took = minutes((end - Date.parse(s.created_at)) / 60_000);
-  return `${s.id} · ${s.name} · ${STAGE[s.stage]} · ${took} · ${tokens(eff)} tokens · ${money(cost)}`;
+  const time = took ?? minutes((end - Date.parse(s.created_at)) / 60_000);
+  return `${s.id} · ${s.name} · ${STAGE[s.stage]} · ${time} · ${tokens(eff)} tokens · ${money(cost)}`;
 }
 
-function order(t: TaskState): number {
+export function order(t: TaskState): number {
   const n = Number(/(\d+)$/.exec(t.id)?.[1] ?? 0);
   return t.kind === 'build' ? n : t.kind === 'plan' ? 1000 : 2000 + n;
 }
 
-function taskLine(t: TaskState): string {
+function taskLine(t: TaskState, frame?: number): string[] {
+  const live = frame !== undefined;
   let extra = '';
-  if (t.status === 'building' || t.status === 'checking') extra = since(t.started_at);
-  if (t.status === 'fixing') extra = `${t.last_check ?? 'check'} failed ${t.fails > 1 ? `${t.fails} times` : 'once'}`;
-  if (t.status === 'blocked') extra = 'waiting for your answer';
+  if (t.status === 'building' || t.status === 'checking') extra = live ? elapsedClock(t.started_at) : since(t.started_at);
+  if (t.status === 'fixing') extra = `${t.last_check ?? 'check'} failed ${t.fails > 1 ? `${t.fails} times` : 'once'}.`;
+  if (t.status === 'blocked') extra = 'Waiting for your answer.';
   if (t.status === 'waiting') extra = t.note ?? '';
   const word = t.kind === 'plan' && t.status === 'building' ? 'working' : WORD[t.status];
-  return `  ${word.padEnd(9)} ${t.id.padEnd(8)} ${short(t.title, 30).padEnd(30)} ${extra}`.trimEnd();
+  const mark = live && (t.status === 'building' || t.status === 'checking') ? `${SPIN[Math.abs(frame) % SPIN.length]} ` : '';
+  const lines = fit(`${mark}  ${word.padEnd(9)} ${t.id.padEnd(8)}`, t.title);
+  if (extra) lines.push(`    ${extra}`);
+  return lines;
 }
 
-export function progress(s: State, usage: Usage[], waiting: number): string[] {
-  const lines = [header(s, usage)];
+export function progress(s: State, usage: Usage[], waiting: number, frame?: number): string[] {
+  const live = frame !== undefined && s.status === 'running';
+  const lines = fit(live ? SPIN[Math.abs(frame!) % SPIN.length] : '', header(s, usage, live ? elapsedClock(s.created_at) : undefined));
   if (s.stage === 'analyst' || s.stage === 'architect') {
     const who = s.stage;
     const c = s.convos[who];
-    lines.push(`  ${(c?.pending.length ? 'blocked' : 'working').padEnd(9)} ${who.padEnd(8)} ${who === 'analyst' ? 'writing the requirement' : 'designing the solution'}`);
+    const label = who === 'analyst' ? 'writing the requirement' : 'designing the solution';
+    const mark = live ? `${SPIN[Math.abs(frame!) % SPIN.length]} ` : '';
+    lines.push(`${mark}  ${(c?.pending.length ? 'blocked' : 'working').padEnd(9)} ${who.padEnd(8)} ${label}`);
   }
   const tasks = Object.values(s.tasks).sort((a, b) => order(a) - order(b));
   const done = tasks.filter((t) => t.status === 'merged');
   const shown = tasks.length > 10 ? tasks.filter((t) => t.status !== 'merged') : tasks;
   if (tasks.length > 10 && done.length) lines.push(`  ${'done'.padEnd(9)} ${done.length} tasks`);
-  for (const t of shown) lines.push(taskLine(t));
+  for (const t of shown) lines.push(...taskLine(t, live ? frame : undefined));
   if (waiting) lines.push(`${waiting === 1 ? 'A question needs' : `${waiting} questions need`} you.`);
   else if (s.status === 'running') lines.push('Nothing needs you right now.');
   else if (s.status === 'done') lines.push('Finished.');
-  else if (s.status === 'stopped' || s.status === 'failed') lines.push(`${s.status === 'failed' ? 'Failed' : 'Stopped'}: ${short(s.error ?? '', 70)}`);
+  else if (s.status === 'stopped' || s.status === 'failed') {
+    const label = s.status === 'failed' ? 'Failed:' : 'Stopped:';
+    lines.push(...fit(label, brief(s.error ?? 'Something went wrong.', 3)));
+  }
   return lines;
 }
 
 export function questionView(q: Question): string[] {
   const who = q.from === 'orcs' ? 'Orcs' : q.from;
   const lines = [`${who} asks (${q.id}):`];
-  for (const d of q.details ?? []) lines.push(`  ${d}`);
-  lines.push(`  ${q.text}`);
+  for (const d of q.details ?? []) lines.push(...wrap(brief(d, 3), LINE - 2).map((l) => `  ${l}`));
+  lines.push(...wrap(q.text, LINE - 2).map((l) => `  ${l}`));
   q.options.forEach((o, i) => lines.push(`  [${i + 1}] ${o}${i + 1 === q.recommended ? ' (recommended)' : ''}`));
   lines.push(q.options.length ? (q.free_text ? '  Type a number, or your own answer.' : '  Type a number.') : '  Type your answer.');
   return lines;
@@ -115,24 +192,24 @@ export function requirementSummary(req: Requirement): string[] {
   const t = req.targets;
   const flags = [t.logins && 'logins', t.personal_data && 'personal data', t.payments && 'payments', t.public_api && 'public api'].filter(Boolean);
   const lines = [
-    `Goal: ${short(req.goal, 72)}`,
+    ...fit('Goal:', brief(req.goal, 3)),
     `${req.brs.length} requirements: ${n('must')} must, ${n('should')} should, ${n('could')} could.`,
-    ...req.brs.slice(0, 12).map((b) => `  ${b.id.padEnd(6)} ${short(b.title, 60)} (${b.priority})`),
+    ...req.brs.slice(0, 12).flatMap((b) => fit(`  ${b.id.padEnd(6)}`, `${b.title} (${b.priority})`)),
   ];
   if (req.brs.length > 12) lines.push(`  and ${req.brs.length - 12} more`);
-  lines.push(`Targets: ${short([...t.platforms, ...t.devices, ...t.browsers].join(', ') || 'none', 60)}`);
-  if (t.expected_users || flags.length) lines.push(`Also: ${[t.expected_users ? `${t.expected_users} users` : '', ...flags].filter(Boolean).join(', ')}`);
-  if (req.non_goals.length) lines.push(`Not included: ${short(req.non_goals.join(', '), 62)}`);
+  lines.push(...fit('Targets:', [...t.platforms, ...t.devices, ...t.browsers].join(', ') || 'none'));
+  if (t.expected_users || flags.length) lines.push(...fit('Also:', [t.expected_users ? `${t.expected_users} users` : '', ...flags].filter(Boolean).join(', ')));
+  if (req.non_goals.length) lines.push(...fit('Not included:', brief(req.non_goals.join('. '), 3)));
   return lines;
 }
 
 export function architectureSummary(arch: Architecture): string[] {
-  const lines = [`Stack: ${short(arch.stack.map((s) => s.choice).join(', '), 70)}`];
+  const lines = [...fit('Stack:', arch.stack.map((s) => s.choice).join(', ') || 'none')];
   lines.push(`${arch.tasks.length} tasks for up to ${arch.developers} developer${arch.developers > 1 ? 's' : ''} at once:`);
-  for (const t of arch.tasks.slice(0, 12)) lines.push(`  ${t.id.padEnd(7)} ${short(t.title, 62)}`);
+  for (const t of arch.tasks.slice(0, 12)) lines.push(...fit(`  ${t.id.padEnd(7)}`, t.title));
   if (arch.tasks.length > 12) lines.push(`  and ${arch.tasks.length - 12} more`);
-  lines.push(`Tests: ${short(arch.test_scope.types.join(', '), 70)}`);
-  lines.push(`Environments: ${short(arch.test_scope.matrix.map((e) => `${e.browser} on ${e.device}`).join(', '), 62)}`);
+  lines.push(...fit('Tests:', arch.test_scope.types.join(', ') || 'none'));
+  lines.push(...fit('Environments:', arch.test_scope.matrix.map((e) => `${e.browser} on ${e.device}`).join(', ') || 'none'));
   return lines;
 }
 
@@ -160,7 +237,7 @@ export function bugLines(report: BugReport, arch?: Architecture): string[] {
     const group = open.filter((b) => b.risk === risk);
     if (!group.length) continue;
     lines.push(risk[0].toUpperCase() + risk.slice(1));
-    for (const b of group) lines.push(`  ${b.id.padEnd(7)} ${short(b.title, 38).padEnd(38)} ${short(where(b, arch), 30)}`.trimEnd());
+    for (const b of group) lines.push(...fit(`  ${b.id.padEnd(7)}`, [b.title, where(b, arch)].filter(Boolean).join('  ')));
   }
   return lines;
 }
@@ -174,7 +251,7 @@ export function bugDetail(b: Bug, arch?: Architecture): string[] {
     ...b.steps.map((s, i) => `    ${i + 1}. ${s}`),
     `  Expected: ${b.expected}`,
     `  Actual: ${b.actual}`,
-    `  Evidence: ${short(b.evidence, 300)}`,
+    ...fit('  Evidence:', brief(b.evidence, 3)),
   ];
 }
 
@@ -189,7 +266,7 @@ export function reportView(d: ReportData): string[] {
   if (d.tasks.length) {
     lines.push('', 'Developer tasks');
     lines.push(...table(['Task', 'Title', 'Sessions', 'Fix rounds', 'Effective', 'Cost'],
-      d.tasks.map((t) => [t.task, short(t.title, 28), t.sessions, t.fixes, tokens(t.effective), money(t.cost)])).map((l) => `  ${l}`));
+      d.tasks.map((t) => [t.task, brief(t.title, 1), t.sessions, t.fixes, tokens(t.effective), money(t.cost)])).map((l) => `  ${l}`));
   }
   lines.push('', 'Rework by gate');
   if (d.rework.length) for (const r of d.rework) lines.push(`  ${r.gate}: ${r.count} rerun${r.count > 1 ? 's' : ''} (${r.tasks})`);
@@ -212,5 +289,5 @@ export function reportView(d: ReportData): string[] {
 export function runList(states: State[], scores: Map<string, number>): string[] {
   if (!states.length) return ['No runs yet. Start one with: orcs new'];
   return table(['Id', 'Project', 'Stage', 'Status', 'Score'],
-    states.map((s) => [s.id, short(s.name, 30), STAGE[s.stage], s.status, scores.get(s.id) ?? '-']));
+    states.map((s) => [s.id, brief(s.name, 1), STAGE[s.stage], s.status, scores.get(s.id) ?? '-']));
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import * as readline from 'node:readline/promises';
 import type { Architecture, BugReport, OrcsEvent, Question, State, Usage } from './types.ts';
@@ -7,8 +8,12 @@ import { killChildren } from './engine/git.ts';
 import { reportData } from './engine/report.ts';
 import { createRun, runEngine } from './engine/run.ts';
 import { history } from './engine/score.ts';
-import { findSkills, isSource, parseSkillList } from './engine/skills.ts';
+import { findSkills, isSource, parseSkillAnswer } from './engine/skills.ts';
+import { slug } from './engine/intake.ts';
 import * as store from './engine/store.ts';
+import { serve } from './server/http.ts';
+import { lanAddresses } from './server/auth.ts';
+import { terminalQr } from './server/qr.ts';
 import * as view from './view.ts';
 
 const HELP = [
@@ -21,10 +26,14 @@ const HELP = [
   '  orcs list                         list all runs',
   '  orcs bugs [id] [bug]              show the bug list or one bug',
   '  orcs report [id]                  show tokens, cost and score',
+  '  orcs ui [--port 4477] [--host 127.0.0.1] [--open] [--shortcut]   open the orcs.ai web app',
   '',
   'Options for orcs new: --name, --req <text or file>, --skills <list>,',
   '  --global-skills yes|no, --dir <project folder>',
 ];
+
+// Flags that take no value, so the word after them is not swallowed.
+const SWITCHES = new Set(['open', 'shortcut']);
 
 const out = (lines: string[] | string): void => {
   process.stdout.write((Array.isArray(lines) ? lines.join('\n') : lines) + '\n');
@@ -37,7 +46,7 @@ function parse(argv: string[]): { cmd: string; pos: string[]; flags: Record<stri
     const a = argv[i];
     if (a.startsWith('--')) {
       const [k, v] = a.slice(2).split('=');
-      flags[k] = v ?? argv[++i] ?? '';
+      flags[k] = SWITCHES.has(k) ? 'yes' : (v ?? argv[++i] ?? '');
     } else pos.push(a);
   }
   return { cmd: pos.shift() ?? 'help', pos, flags };
@@ -50,7 +59,6 @@ function latest(id?: string): string {
 }
 
 const usageOf = (id: string) => store.readLines<Usage>(store.runFile(id, 'usage.jsonl'));
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project';
 
 async function cmdNew(flags: Record<string, string>): Promise<void> {
   const rl = process.stdin.isTTY ? readline.createInterface({ input: process.stdin, output: process.stdout }) : undefined;
@@ -66,33 +74,28 @@ async function cmdNew(flags: Record<string, string>): Promise<void> {
   const name = await need('Project name: ', 'name');
   let requirements = await need('Requirements (type them, or give a file path): ', 'req');
   if (fs.existsSync(requirements) && fs.statSync(requirements).isFile()) requirements = fs.readFileSync(requirements, 'utf8');
-  let raw = flags.skills;
-  if (raw === undefined) {
-    out('Skills are installed for this project only. Skills can run code, so use sources you trust.');
-    raw = await ask('AI skills you want (owner/repo@skill, comma separated, or blank): ');
+  let raw = flags.skills ?? '';
+  let global = flags['global-skills'];
+  if (flags.skills === undefined && rl) {
+    out('Skills are optional, and they are installed for this project only. Name sources you trust, like owner/repo or owner/repo@skill, separated by commas. Add the word global if agents should also use your global skills. That adds about 2k tokens to every agent turn. Press enter to skip. Skills can run code, so use sources you trust.');
+    raw = await ask('Skills: ');
   }
+  const parsed = parseSkillAnswer(raw);
+  if (global === undefined) global = parsed.global ? 'yes' : 'no';
   const skills: string[] = [];
-  for (const item of parseSkillList(raw)) {
+  for (const item of parsed.items) {
     if (isSource(item)) {
       skills.push(item);
       continue;
     }
-    out(`Looking up "${item}"...`);
+    out(`Looking up "${item}".`);
     const found = await findSkills(item, process.cwd());
-    if (!found.length || !rl) {
-      out(found.length ? `Skipped "${item}". Name a source like ${found[0].split(' ')[0]}.` : `No skill found for "${item}". Skipped.`);
-      continue;
+    const source = found[0]?.split(' ')[0];
+    if (!source) out(`No skill found for "${item}". Skipped.`);
+    else {
+      skills.push(source);
+      out(`Using ${source} for "${item}".`);
     }
-    found.forEach((f, i) => out(`  [${i + 1}] ${f}`));
-    out(`  [${found.length + 1}] Skip`);
-    const n = Number(await ask('Pick one: '));
-    if (n >= 1 && n <= found.length) skills.push(found[n - 1].split(' ')[0]);
-  }
-  let global = flags['global-skills'];
-  if (global === undefined) {
-    out('Use your global skills too? This adds about 2k tokens to every agent turn, plus any skill an agent loads.');
-    out(['  [1] No, project skills only (recommended)', '  [2] Yes']);
-    global = (await ask('Pick one: ')) === '2' ? 'yes' : 'no';
   }
   rl?.close();
   const dir = path.resolve(flags.dir ?? slug(name));
@@ -108,6 +111,8 @@ class Screen {
   private queued: string[] = [];
   private shown = new Set<string>();
   private timer?: NodeJS.Timeout;
+  private frame = 0;
+  private beat = 0;
   private last = '';
   private rl?: readline.Interface;
   private id: string;
@@ -157,7 +162,7 @@ class Screen {
 
   private draw(force = false): void {
     if (!this.interactive || this.prompting) return;
-    const lines = view.progress(store.loadState(this.id), usageOf(this.id), store.pending(this.id).length);
+    const lines = view.progress(store.loadState(this.id), usageOf(this.id), store.pending(this.id).length, this.frame);
     const text = lines.join('\n');
     if (!force && text === this.last && this.footer) return;
     this.clear();
@@ -175,8 +180,15 @@ class Screen {
         this.shown.add(q.id);
         out([...view.questionView(q), `  Answer with: orcs answer ${this.id} ${q.id} <choice>`]);
       }
+      const s = store.loadState(this.id);
+      const now = Date.now();
+      if (s.status === 'running' && now - this.beat >= 10_000) {
+        this.beat = now;
+        out(`· ${view.STAGE[s.stage]} · ${view.elapsedClock(s.created_at)}`);
+      }
       return;
     }
+    this.frame++;
     if (!this.prompting && waiting.length) void this.prompt(waiting[0]);
     else this.draw();
   }
@@ -284,6 +296,82 @@ function cmdReport(id?: string): void {
   if (fs.existsSync(file)) out(`\nSaved: ${file}`);
 }
 
+function desktopShortcut(port = 4477): string {
+  const desktop = path.join(os.homedir(), 'Desktop');
+  fs.mkdirSync(desktop, { recursive: true });
+  fs.rmSync(path.join(desktop, 'Orcs.webloc'), { force: true });
+  const file = path.join(desktop, 'Orcs.command');
+  const cli = path.resolve(import.meta.dirname, 'cli.ts');
+  const url = `http://127.0.0.1:${port}/`;
+  const script = `#!/bin/bash
+# Double-click starts orcs.ai in this window, then opens it in the browser.
+set -e
+NODE=${JSON.stringify(process.execPath)}
+if [[ ! -x "$NODE" ]]; then
+  NODE="$(command -v node || true)"
+fi
+if [[ ! -x "$NODE" ]]; then
+  echo "Node was not found. Install Node 22, then try again."
+  echo "Press return to close."
+  read -r
+  exit 1
+fi
+if curl -fsS -o /dev/null --max-time 2 ${JSON.stringify(url)}; then
+  open ${JSON.stringify(url)}
+  echo "orcs.ai is already running."
+  echo "Opened ${url}"
+  echo "Press return to close."
+  read -r
+  exit 0
+fi
+exec "$NODE" ${JSON.stringify(cli)} ui --open --port ${port}
+`;
+  fs.writeFileSync(file, script, { mode: 0o755 });
+  fs.chmodSync(file, 0o755);
+  return file;
+}
+
+async function cmdUi(flags: Record<string, string>): Promise<void> {
+  const port = Number(flags.port || 4477);
+  if (flags.shortcut === 'yes') out(`Desktop shortcut: ${desktopShortcut(Number.isInteger(port) ? port : 4477)}`);
+  const host = flags.host || '127.0.0.1';
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Use a port from 1 to 65535.');
+  let app: Awaited<ReturnType<typeof serve>>;
+  try {
+    app = await serve({ host, port });
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (flags.open === 'yes' && code === 'EADDRINUSE') {
+      const url = `http://127.0.0.1:${port}/`;
+      const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
+      const { spawn } = await import('node:child_process');
+      spawn(opener, [url], { stdio: 'ignore', detached: true }).on('error', () => undefined).unref();
+      out(`orcs.ai is already running.\n  Opened: ${url}`);
+      return;
+    }
+    throw e;
+  }
+  const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  const lines = ['orcs.ai is running.', `  Open: ${app.url}`, '  Keep this link private. Anyone with it can see and answer your runs.'];
+  if (!loopback) {
+    const lan = lanAddresses()[0] ?? host;
+    const phone = `http://${lan}:${app.port}/?token=${app.token}`;
+    lines.push('', `  Phone, same network: ${phone}`, '', ...terminalQr(phone).split('\n').map((l: string) => `  ${l}`));
+  }
+  lines.push('', 'Stop with Ctrl-C.');
+  out(lines);
+  if (flags.open === 'yes') {
+    const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
+    const { spawn } = await import('node:child_process');
+    spawn(opener, [app.url], { stdio: 'ignore', detached: true }).on('error', () => undefined).unref();
+  }
+  const stop = () => {
+    void app.close().then(() => process.exit(0));
+  };
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
+}
+
 async function cmdResume(id?: string): Promise<void> {
   const rid = latest(id);
   const s: State = store.loadState(rid);
@@ -302,6 +390,7 @@ async function main(): Promise<void> {
     case 'list': return cmdList();
     case 'bugs': return cmdBugs(pos);
     case 'report': return cmdReport(pos[0]);
+    case 'ui': return cmdUi(flags);
     default: out(HELP);
   }
 }

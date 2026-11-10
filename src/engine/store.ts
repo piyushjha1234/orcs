@@ -79,6 +79,16 @@ export function sha256File(file: string): string {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
+export function removeRun(id: string): void {
+  const state = loadState(id);
+  if (state.status !== 'running') throw new Error(`${id} is not running.`);
+  if (state.pid && state.pid !== process.pid) {
+    try { process.kill(state.pid, 'SIGTERM'); } catch { /* the process has already stopped */ }
+  }
+  fs.rmSync(runDir(id), { recursive: true, force: true });
+  fs.rmSync(worktreeDir(id), { recursive: true, force: true });
+}
+
 export function listRunIds(): string[] {
   const dir = path.join(home(), 'runs');
   if (!fs.existsSync(dir)) return [];

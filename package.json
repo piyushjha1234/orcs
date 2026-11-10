@@ -11,16 +11,20 @@
     "schemas",
     "config",
     "templates",
-    "src"
+    "src",
+    "web"
   ],
   "engines": {
     "node": ">=22.18"
   },
   "scripts": {
-    "check": "tsc",
-    "test": "node --test test/*.test.ts"
+    "check": "tsc && tsc -p web && tsc -p test/ui",
+    "test": "node --test test/*.test.ts",
+    "test:ui": "playwright test"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.65.0",
     "@types/node": "^22.20.5",
     "typescript": "^7.0.2"
   },

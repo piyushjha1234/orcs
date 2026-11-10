@@ -35,6 +35,15 @@ export function parseSkillList(input: string): string[] {
   return input.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
 }
 
+// One answer covers both. The word "global" turns on global skills. Anything else is a skill name or source.
+export function parseSkillAnswer(input: string): { items: string[]; global: boolean } {
+  const tokens = parseSkillList(input);
+  return {
+    items: tokens.filter((t) => !/^global$/i.test(t)),
+    global: tokens.some((t) => /^global$/i.test(t)),
+  };
+}
+
 export function isSource(s: string): boolean {
   return /^https?:\/\//.test(s) || /^[\w.-]+\/[\w.-]+(@[\w.:-]+)?$/.test(s);
 }

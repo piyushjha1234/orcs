@@ -5,11 +5,15 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import type { Agent, AgentQuestion, Convo, Mode, Role, State, Usage } from '../types.ts';
 import { track } from './git.ts';
+import { lessonsFor, rememberMistake } from './lessons.ts';
 import { projectSkills } from './skills.ts';
 import * as store from './store.ts';
+import { brief } from '../view.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const LADDER = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'];
+export const MODELS: readonly string[] = LADDER;
+export const ROLES: readonly Role[] = ['analyst', 'architect', 'developer', 'tester'];
 
 export class StopRun extends Error {}
 export class SchemaError extends Error {}
@@ -22,11 +26,51 @@ export interface AgentDef {
   file: string;
 }
 
+function settingsFile(): string {
+  return path.join(store.home(), 'settings.json');
+}
+
+// Models picked in orcs ui. Only models on the ladder count, so stepping up to a stronger model still works.
+export function modelOverrides(): Partial<Record<Role, string>> {
+  let saved: { models?: Record<string, unknown> } | undefined;
+  try {
+    saved = store.readJsonIf(settingsFile());
+  } catch {
+    saved = undefined;
+  }
+  const out: Partial<Record<Role, string>> = {};
+  for (const role of ROLES) {
+    const m = saved?.models?.[role];
+    if (typeof m === 'string' && LADDER.includes(m)) out[role] = m;
+  }
+  return out;
+}
+
+export function saveModelOverrides(models: Partial<Record<Role, string>>): void {
+  const clean: Partial<Record<Role, string>> = {};
+  for (const role of ROLES) {
+    const m = models[role];
+    if (m && LADDER.includes(m)) clean[role] = m;
+  }
+  let saved: Record<string, unknown> = {};
+  try {
+    saved = store.readJsonIf<Record<string, unknown>>(settingsFile()) ?? {};
+  } catch {
+    saved = {};
+  }
+  store.writeJson(settingsFile(), { ...saved, models: clean });
+}
+
+export function defaultModel(role: Role): string {
+  const { data } = store.frontmatter(fs.readFileSync(path.join(ROOT, 'agents', `${role}.md`), 'utf8'));
+  return data.model;
+}
+
 export function loadAgent(role: Role): AgentDef {
   const file = path.join(ROOT, 'agents', `${role}.md`);
   const { data } = store.frontmatter(fs.readFileSync(file, 'utf8'));
   const tools = (data.tools || '').split(',').map((t) => t.trim()).filter(Boolean);
-  return { role, model: data.model, effort: data.effort || undefined, tools, file };
+  return { role, model: modelOverrides()[role] ?? data.model, effort: data.effort || undefined, tools, file };
 }
 
 export function launchMode(state: State): Mode {
@@ -178,12 +222,12 @@ export async function callClaude(o: CallOpts): Promise<unknown> {
   try {
     res = JSON.parse(r.stdout) as ClaudeResult;
   } catch {
-    throw new Error(`${o.task ?? o.agent}: Claude gave no result. ${(r.stderr || r.stdout).trim().split('\n').slice(-3).join(' ')}`);
+    throw new Error(`${o.task ?? o.agent}: Claude gave no result. ${brief((r.stderr || r.stdout).trim(), 2)}`);
   }
   const usage = toUsage(res, { run: o.state.id, agent: o.agent, task: o.task, model, session: o.session, duration_ms: Date.now() - started });
   store.appendLine(store.runFile(o.state.id, 'usage.jsonl'), usage);
   if (res.subtype === 'error_max_structured_output_retries') throw new SchemaError(`${o.task ?? o.agent}: output did not match the schema.`);
-  if (res.is_error || r.code !== 0) throw new Error(`${o.task ?? o.agent}: Claude stopped with an error (${res.subtype ?? r.code}). ${String(res.result ?? '').slice(0, 200)}`);
+  if (res.is_error || r.code !== 0) throw new Error(`${o.task ?? o.agent}: Claude stopped with an error (${res.subtype ?? r.code}). ${brief(String(res.result ?? ''), 2)}`);
   if (res.structured_output !== undefined) return res.structured_output;
   try {
     return JSON.parse(res.result ?? '');
@@ -198,7 +242,7 @@ export async function repeatPause(state: State, who: string, convo: Convo, probl
   const q = store.ask(state.id, {
     from: 'orcs',
     text: `${who} failed the same check twice. What now?`,
-    details: problem.split('\n').slice(0, 6),
+    details: [brief(problem, 3)].filter(Boolean),
     options,
     recommended: 1,
   });
@@ -212,6 +256,31 @@ export async function repeatPause(state: State, who: string, convo: Convo, probl
     store.event(state.id, 'model', `${who} now runs on ${up}.`);
   }
   store.saveState(state);
+}
+
+// Step up to a stronger model before asking the owner. The mistake stays with this agent.
+export async function nudge(state: State, who: string, convo: Convo, problem: string): Promise<void> {
+  const up = stronger(convo.model);
+  if (convo.repeats === 1 && up) {
+    convo.model = up;
+    convo.repeats = 0;
+    store.event(state.id, 'model', `${who} hit the same check again. Retrying on ${up}.`);
+    store.saveState(state);
+    return;
+  }
+  await repeatPause(state, who, convo, problem);
+}
+
+function teach(prompt: string, role: Role): string {
+  const lessons = lessonsFor(role);
+  if (!lessons.length || !prompt.startsWith('{')) return prompt;
+  try {
+    const body = JSON.parse(prompt) as Record<string, unknown>;
+    body.lessons = lessons;
+    return JSON.stringify(body);
+  } catch {
+    return prompt;
+  }
 }
 
 export interface ConverseOpts {
@@ -261,7 +330,7 @@ export async function converse(o: ConverseOpts): Promise<Record<string, unknown>
     let out: Record<string, unknown> = {};
     let schemaFailed = false;
     try {
-      out = (await callClaude({ state: s, agent: o.agent, role: o.role, task: o.task, cwd: o.cwd, prompt: c.next_prompt, schemaName: o.schemaName, session: c.session, resume: c.started, model: c.model })) as Record<string, unknown>;
+      out = (await callClaude({ state: s, agent: o.agent, role: o.role, task: o.task, cwd: o.cwd, prompt: teach(c.next_prompt, o.role), schemaName: o.schemaName, session: c.session, resume: c.started, model: c.model })) as Record<string, unknown>;
     } catch (e) {
       if (!c.started && /already (in use|exists)/i.test(String(e))) {
         c.started = true;
@@ -288,7 +357,8 @@ export async function converse(o: ConverseOpts): Promise<Record<string, unknown>
       c.repeats = sig === c.last_errors ? c.repeats + 1 : 0;
       c.last_errors = sig;
       store.event(s.id, 'rework', `${o.from} output failed ${errors.length} check${errors.length > 1 ? 's' : ''}. Sent back to fix.`, { task: o.task ?? o.from, gate: 'contract check' });
-      if (c.repeats >= 1) await repeatPause(s, o.from, c, sig);
+      rememberMistake(o.role, 'contract check', sig);
+      if (c.repeats >= 1) await nudge(s, o.from, c, sig);
       c.next_prompt = JSON.stringify({ fix: errors });
       store.saveState(s);
       continue;

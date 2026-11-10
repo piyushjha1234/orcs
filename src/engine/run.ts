@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Architecture, Bug, BugReport, Decision, Intake, Question, Requirement, Stage, State, Task, TestPlan } from '../types.ts';
-import { architectureSummary, bugLines, requirementSummary, short } from '../view.ts';
-import { callClaude, converse, loadAgent, repeatPause, send, StopRun, type ConverseOpts } from './agent.ts';
+import { architectureSummary, brief, bugLines, requirementSummary } from '../view.ts';
+import { callClaude, converse, loadAgent, nudge, send, StopRun, type ConverseOpts } from './agent.ts';
+import { rememberMistake } from './lessons.ts';
 import { ARCHITECTURE_FIELDS, checkArchitecture, checkBugs, checkRequirement, checkTestPlan, inside, outOfScope, overlaps, pick, readyTasks, REQUIREMENT_FIELDS } from './checks.ts';
 import * as g from './git.ts';
 import { writeReadme } from './readme.ts';
@@ -91,7 +92,7 @@ async function install(s: State, src: string): Promise<void> {
     const names = await installSkill(s.project, src);
     store.event(s.id, 'skill', `Installed ${names.join(', ')}.`);
   } catch {
-    const d = await decide(s, `install-${src}`, { text: short(`Could not install ${src}. What now?`, 100), options: ['Skip it', 'Stop the run'], recommended: 1 });
+    const d = await decide(s, `install-${src}`, { text: `Could not install ${src}. What now?`, options: ['Skip it', 'Stop the run'], recommended: 1 });
     if (d.choice === 2) throw new StopRun(`Could not install ${src}.`);
   }
 }
@@ -125,23 +126,40 @@ async function analyst(s: State): Promise<void> {
   next(s, 'skills');
 }
 
+function hasSkill(s: State, r: ReturnType<typeof recommendations>[number]): boolean {
+  if (r.kind === 'builtin') return s.security_review;
+  return projectSkills(s.project).some((x) => x.name === r.name) || (s.intake.global_skills && globalSkillNames().includes(r.name));
+}
+
+function skillAsk(missing: ReturnType<typeof recommendations>): string {
+  const bits = missing.map((r) => {
+    const why = r.when === 'ui' ? 'the project has screens' : 'the project handles logins, personal data, payments or a public API';
+    const name = r.kind === 'builtin' ? 'a security review' : r.name;
+    return `${name} (${r.what}) because ${why}`;
+  });
+  const list = bits.length === 1 ? bits[0] : `${bits.slice(0, -1).join(', ')} and ${bits.at(-1)}`;
+  return `Add ${list}? This stays on this project only.`;
+}
+
 async function skills(s: State): Promise<void> {
   const req = approved<Requirement>(s, 'requirement');
-  for (const r of recommendations(req)) {
-    const have = r.kind === 'builtin'
-      ? s.security_review
-      : projectSkills(s.project).some((x) => x.name === r.name) || (s.intake.global_skills && globalSkillNames().includes(r.name));
-    if (have) continue;
-    const why = r.when === 'ui' ? 'Your project has screens.' : 'Your project has logins, personal data, payments or a public API.';
-    const text = r.kind === 'builtin' ? 'Add a security review to testing?' : `Add ${r.name} (${r.what}) to this project only?`;
-    const d = await decide(s, `skill-${r.name}`, { text, details: [why], options: ['Yes', 'No'], recommended: 1 });
-    if (d.choice !== 1) continue;
-    if (r.kind === 'builtin') {
-      s.security_review = true;
-      store.saveState(s);
-      store.event(s.id, 'skill', 'Security review is on.');
-    } else {
-      await install(s, `${r.source}@${r.skill}`);
+  const missing = recommendations(req).filter((r) => !hasSkill(s, r));
+  if (missing.length) {
+    const both = missing.some((r) => r.kind === 'install') && missing.some((r) => r.kind === 'builtin');
+    const d = await decide(s, 'skills-recommend', {
+      text: skillAsk(missing),
+      options: both ? ['Add all', 'Only the security review', 'No'] : ['Yes', 'No'],
+      recommended: 1,
+    });
+    const take = d.choice === 1 ? missing : d.choice === 2 && both ? missing.filter((r) => r.kind === 'builtin') : [];
+    for (const r of take) {
+      if (r.kind === 'builtin') {
+        s.security_review = true;
+        store.saveState(s);
+        store.event(s.id, 'skill', 'Security review is on.');
+      } else {
+        await install(s, `${r.source}@${r.skill}`);
+      }
     }
   }
   s.skills = projectSkills(s.project).map((x) => x.name);
@@ -274,12 +292,14 @@ async function runTask(s: State, t: Task, arch: Architecture, input: TaskInput):
     c.repeats = sig === c.last_errors ? c.repeats + 1 : 0;
     c.last_errors = sig;
     store.event(s.id, 'rework', `${t.id} failed the ${problem.gate}. Sent back to fix.`, { task: t.id, gate: problem.gate });
+    rememberMistake('developer', problem.gate, problem.detail);
     if (c.repeats >= 1) {
-      await repeatPause(s, t.id, c, problem.detail);
+      await nudge(s, t.id, c, problem.detail);
       ts.model = c.model;
     }
     store.saveState(s);
-    await send(opts, { fix: { gate: problem.gate, output: problem.detail } });
+    // A failed check stays with this developer. It does not reopen the architecture.
+    await send(opts, { fix: { gate: problem.gate, output: problem.detail }, note: 'Fix this in the task. Do not ask for an architecture change.' });
   }
 }
 
@@ -368,6 +388,7 @@ async function testerPlan(s: State, req: Requirement, arch: Architecture): Promi
     s.counters.scope_violations++;
     g.revertPaths(wt, s.base, outside);
     store.event(s.id, 'rework', `Tester wrote files outside ${arch.setup.tests_dir}. Sent back.`, { task: 'tester', gate: 'scope check' });
+    rememberMistake('tester', 'scope check', `Write only inside ${arch.setup.tests_dir}. These files were reverted: ${outside.join(', ')}.`);
     out = await send(opts, { fix: [`Write only inside ${arch.setup.tests_dir}. These files were reverted: ${outside.join(', ')}.`] });
   }
   store.writeJson(file, { cases: out.cases, files: out.files });
@@ -430,7 +451,7 @@ async function test(s: State): Promise<void> {
   g.resetHard(main, 'HEAD');
   if (!g.isAncestor(main, testsBranch, 'HEAD')) {
     const m = g.merge(main, testsBranch, 'orcs: add tests');
-    if (!m.ok) throw new Error(`Could not add the tests: ${short(m.out, 120)}`);
+    if (!m.ok) throw new Error(`Could not add the tests: ${brief(m.out, 2)}`);
   }
   const ts = s.tasks.tester;
   if (ts) {
@@ -536,7 +557,7 @@ async function fix(s: State): Promise<void> {
       const files = [...new Set(owners.flatMap((t) => t.files))];
       const task: Task = {
         id: `fix-${++n}`,
-        title: short(`fix ${bug.id}: ${bug.title}`, 80),
+        title: `fix ${bug.id}: ${bug.title}`,
         brs: bug.br === 'none' ? [] : [bug.br],
         files,
         deps: pending.filter((p) => p.files.some((f) => files.some((x) => overlaps(f, x)))).map((p) => p.id),

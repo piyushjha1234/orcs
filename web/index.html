@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Watch and steer orcs runs from your browser.">
+  <title>orcs.ai</title>
+  <link rel="icon" href="/web/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/web/app.css">
+  <script type="module" src="/web/app.ts"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <orcs-brand></orcs-brand>
+    <div class="header-actions">
+      <button type="button" class="icon-btn" data-open="settings-dialog" aria-label="Settings">
+        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg>
+      </button>
+      <button type="button" class="icon-btn" data-open="help-dialog" aria-label="Shortcuts">
+        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M12 10h.01M17 10h.01M8 14h8"/></svg>
+      </button>
+      <button type="button" class="icon-btn" id="screen-size" aria-label="Maximise">
+        <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav id="sections" class="sections" aria-label="Run sections" hidden><ul></ul></nav>
+    <main id="main" tabindex="-1"><p class="loading">Loading…</p></main>
+  </div>
+
+  <div id="status" class="sr-only" role="status"></div>
+
+  <dialog id="help-dialog" class="dialog" aria-labelledby="help-title">
+    <form method="dialog" class="dialog-form">
+      <h2 id="help-title">Keyboard shortcuts</h2>
+      <dl class="keys">
+        <div><dt><kbd>?</kbd></dt><dd>Show this list</dd></div>
+        <div><dt><kbd>n</kbd></dt><dd>New run</dd></div>
+        <div><dt><kbd>g</kbd> then <kbd>r</kbd></dt><dd>Go to runs</dd></div>
+        <div><dt><kbd>1</kbd> to <kbd>9</kbd></dt><dd>Pick an answer on a question</dd></div>
+        <div><dt><kbd>Enter</kbd></dt><dd>Send an answer</dd></div>
+        <div><dt><kbd>Esc</kbd></dt><dd>Close a dialog</dd></div>
+      </dl>
+      <p class="hint">Shortcuts are off while you type.</p>
+      <div class="actions"><button type="submit" class="btn btn-primary">Done</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="folder-dialog" class="dialog" aria-labelledby="folder-title">
+    <form method="dialog" class="dialog-form">
+      <h2 id="folder-title">Choose a folder</h2>
+      <p class="hint" id="folder-hint">Open the folder for this project. You can make a new folder in that window.</p>
+      <button type="button" class="btn" id="folder-open" aria-describedby="folder-hint">Open</button>
+      <p class="field-note" id="folder-path">No folder yet</p>
+      <p class="error" id="folder-error" hidden></p>
+      <div class="actions">
+        <button type="submit" value="cancel" class="btn">Cancel</button>
+        <button type="submit" value="go" class="btn btn-primary" id="folder-go" disabled>Continue</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="settings-dialog" class="dialog" aria-labelledby="settings-title">
+    <form method="dialog" id="settings-form" class="dialog-form">
+      <h2 id="settings-title">Settings</h2>
+      <section class="settings-group" aria-labelledby="display-title">
+        <h3 id="display-title">Display</h3>
+        <fieldset class="field">
+          <legend>Theme</legend>
+          <div class="choices">
+            <label class="choice"><input type="radio" name="theme" value="system"> Match system</label>
+            <label class="choice"><input type="radio" name="theme" value="light"> Light</label>
+            <label class="choice"><input type="radio" name="theme" value="dark"> Dark</label>
+          </div>
+        </fieldset>
+        <label class="choice"><input type="checkbox" name="announce"> Announce new questions and finished runs</label>
+        <p class="hint">Saved in this browser.</p>
+      </section>
+      <section class="settings-group" aria-labelledby="models-title">
+        <h3 id="models-title">Agent models</h3>
+        <p class="hint">Saved on this computer. Agent sessions that start after a change use the new model.</p>
+        <model-settings><p class="loading">Loading models…</p></model-settings>
+      </section>
+      <div class="actions"><button type="submit" class="btn btn-primary">Done</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

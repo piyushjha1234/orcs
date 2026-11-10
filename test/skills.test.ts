@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isSource, linkSkills, parseSkillList, projectSkills, recommendations } from '../src/engine/skills.ts';
+import { isSource, linkSkills, parseSkillAnswer, parseSkillList, projectSkills, recommendations } from '../src/engine/skills.ts';
 import { launchMode, modeFlags, schema, stronger } from '../src/engine/agent.ts';
 import { addWorktree, changedFiles, commitAll, ensureRepo, excludeLocal } from '../src/engine/git.ts';
 import { requirement } from './fixtures.ts';
@@ -22,6 +22,8 @@ test('skill input parsing', () => {
   assert.ok(isSource('pbakaus/impeccable'));
   assert.ok(isSource('https://github.com/pbakaus/impeccable'));
   assert.ok(!isSource('react'));
+  assert.deepEqual(parseSkillAnswer('react, owner/repo@skill global'), { items: ['react', 'owner/repo@skill'], global: true });
+  assert.deepEqual(parseSkillAnswer(''), { items: [], global: false });
 });
 
 test('project skills are listed and linked into worktrees', () => {

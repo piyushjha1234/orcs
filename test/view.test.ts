@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { BugReport, State } from '../src/types.ts';
 import { applyReadme, mermaid, renderReadme } from '../src/engine/readme.ts';
-import { architectureSummary, bugLines, minutes, progress, questionView, requirementSummary, tokens } from '../src/view.ts';
+import { architectureSummary, brief, bugLines, minutes, progress, questionView, requirementSummary, tokens } from '../src/view.ts';
 import { architecture, requirement } from './fixtures.ts';
 
 const ago = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
@@ -32,14 +32,30 @@ test('number formats are short', () => {
 
 test('progress shows every task with a title, in short lines', () => {
   const lines = progress(state(), [{ effective: 1_200_000, cost: 3.1 } as never], 0);
+  const blob = lines.join(' ');
   assert.match(lines[0], /^orcs-2 · notes app · building · 24 min · 1\.2m tokens · \$3\.10$/);
-  assert.ok(lines.some((l) => /done\s+dev-1\s+sign in/.test(l)));
-  assert.ok(lines.some((l) => /fixing\s+dev-2.*task test failed once/.test(l)));
-  assert.ok(lines.some((l) => /waiting\s+dev-3.*needs dev-2/.test(l)));
-  assert.ok(lines.some((l) => /working\s+tester/.test(l)));
+  assert.match(blob, /done\s+dev-1\s+sign in/);
+  assert.match(blob, /fixing\s+dev-2/);
+  assert.ok(blob.includes('notes list with a very long title that keeps going'));
+  assert.ok(blob.includes('task test failed once'));
+  assert.match(blob, /waiting\s+dev-3/);
+  assert.ok(blob.includes('needs dev-2'));
+  assert.match(blob, /working\s+tester/);
   assert.equal(lines.at(-1), 'Nothing needs you right now.');
   for (const l of lines) assert.ok(l.length <= 80, `too long: ${l}`);
+  assert.ok(!blob.includes('…'));
   assert.equal(progress(state(), [], 2).at(-1), '2 questions need you.');
+});
+
+test('statements keep whole sentences and stay within a few lines', () => {
+  const text = 'The build failed on the login page. The button never enables. The console shows a missing token. A fourth sentence should stay hidden.';
+  assert.equal(brief(text, 3), 'The build failed on the login page. The button never enables. The console shows a missing token.');
+  assert.equal(brief('One very long sentence without a stop', 3), 'One very long sentence without a stop');
+  const live = progress(state(), [], 0, 1);
+  assert.match(live[0], /^[|/\\-] orcs-2 · notes app · building · \d+:\d{2}/);
+  const shown = live.join(' ');
+  assert.match(shown, /working\s+tester/);
+  assert.match(shown, /\d+:\d{2}/);
 });
 
 test('questions show numbered options and the recommended one', () => {
