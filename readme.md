@@ -36,7 +36,7 @@ flowchart TD
 You need Node 22.18 or newer, git, and Claude Code signed in.
 
 ```bash
-git clone <this repo> orcs
+git clone git@github.com:piyushjha1234/orcs.git orcs
 cd orcs
 npm install
 npm link
